@@ -102,18 +102,15 @@ export async function groqChat(
   // slightly higher temperature, so we don't surface an error to the
   // user for something that's not really a request problem.
   if (!res.ok && opts.jsonMode) {
-    const text = await res.text();
-    if (
-      text.includes("json_validate_failed") ||
-      text.includes("failed_generation")
-    ) {
-      res = await callGroq(
-        messages,
-        { ...opts, temperature: (opts.temperature ?? 0.4) + 0.15 },
-        apiKey
-      );
+    const errorText = await res.text();
+    if (errorText.includes("json_validate_failed") || errorText.includes("failed_generation")) {
+      console.warn("JSON mode failed. Retrying with standard mode...");
+      // This forces the retry to NOT use JSON mode, which bypasses the validation error
+      res = await callGroq(messages, { ...opts, jsonMode: false }, apiKey);
     } else {
-      throw new Error(`Groq API error (${res.status}): ${text}`);
+      throw new Error(`Groq API error (${res.status}): ${errorText}`);
+    }
+  }
     }
   }
 
@@ -133,9 +130,12 @@ export async function groqChat(
  */
 export function parseGroqJson<T>(raw: string, fallback: T): T {
   try {
-    const parsed = JSON.parse(raw);
+    // This regex removes ```json ... ``` markdown wrappers if the model adds them
+    const cleaned = raw.replace(/^```json\s*/, "").replace(/\s*```$/, "");
+    const parsed = JSON.parse(cleaned);
     return parsed ?? fallback;
   } catch {
     return fallback;
   }
+}
 }

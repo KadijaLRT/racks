@@ -1,0 +1,40 @@
+@import "tailwindcss";
+
+@theme {
+  --color-cream: #faf7f2;
+  --color-cream-100: #f3ede2;
+  --color-clay-50: #fbf1ec;
+  --color-clay-100: #f4ded2;
+  --color-clay-300: #e3b9a4;
+  --color-clay-500: #c98868;
+  --color-clay-700: #9c5f43;
+  --color-emerald-50: #edf5f0;
+  --color-emerald-100: #d3e8db;
+  --color-emerald-500: #3f8f63;
+  --color-emerald-600: #34754f;
+  --color-emerald-700: #285c3d;
+}
+
+html,
+body {
+  background-color: var(--color-cream);
+  color: #3a352f;
+}
+
+/* Safe-area utilities: keep layout out of notches / home indicator */
+.pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.pl-safe {
+  padding-left: env(safe-area-inset-left);
+}
+.pr-safe {
+  padding-right: env(safe-area-inset-right);
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}

@@ -10,7 +10,7 @@ import { CATEGORIES, categoryEmoji } from "@/lib/categories";
 interface DetectedItem {
   name: string;
   category: ItemCategory;
-  tags: Record<string, string>;
+  tags: string[];
   box: { x: number; y: number; width: number; height: number };
   croppedImage: string | null;
   selected: boolean;
@@ -100,7 +100,25 @@ export default function BulkImportSheet({
             category: item.category,
             image: item.croppedImage || "",
             name: item.name,
-            tags: item.tags || {},
+            tags: (item.tags || []).reduce<Record<string, string>>(
+              (acc, tag, i) => {
+                const colonIndex = tag.indexOf(":");
+                if (colonIndex > 0) {
+                  const key = tag.slice(0, colonIndex).trim();
+                  const value = tag.slice(colonIndex + 1).trim();
+                  if (key && value) {
+                    acc[key] = value;
+                    return acc;
+                  }
+                }
+                // Defensive: the model didn't return "key: value" for
+                // this one, fall back to a generic slot rather than
+                // dropping the detail entirely.
+                acc[`detail${i + 1}`] = tag;
+                return acc;
+              },
+              {}
+            ),
             laundryStatus: "clean",
             timesWorn: 0,
           })

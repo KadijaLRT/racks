@@ -95,27 +95,42 @@ export async function groqChat(
     );
   }
 
+  const isJsonValidationFailure = (text: string) =>
+    text.includes("json_validate_failed") || text.includes("failed_generation");
+
   let res = await callGroq(messages, opts, apiKey);
 
   // A transient generation hiccup (empty failed_generation / strict JSON
-  // mode validation failure) usually self-heals with one retry at a
+  // mode validation failure) usually self-heals with a retry at a
   // slightly higher temperature, so we don't surface an error to the
-  // user for something that's not really a request problem.
-  if (!res.ok && opts.jsonMode) {
-    const errorText = await res.text();
-    if (errorText.includes("json_validate_failed") || errorText.includes("failed_generation")) {
-      console.warn("JSON mode failed. Retrying with standard mode...");
-      // This forces the retry to NOT use JSON mode, which bypasses the validation error
-      res = await callGroq(messages, { ...opts, jsonMode: false }, apiKey);
-    } else {
-      throw new Error(`Groq API error (${res.status}): ${errorText}`);
+  // user for something that's not really a request problem. json_object
+  // mode is documented by Groq as occasionally producing malformed JSON
+  // on complex/open-ended schemas, so we give it two extra tries before
+  // giving up.
+  let attempt = 0;
+  while (!res.ok && opts.jsonMode && attempt < 2) {
+    const text = await res.text();
+    if (!isJsonValidationFailure(text)) {
+      throw new Error(`Groq API error (${res.status}): ${text}`);
     }
-  }
-    }
+    attempt += 1;
+    res = await callGroq(
+      messages,
+      { ...opts, temperature: (opts.temperature ?? 0.4) + 0.15 * attempt },
+      apiKey
+    );
   }
 
   if (!res.ok) {
     const text = await res.text();
+    // If we exhausted retries on a JSON validation failure specifically,
+    // give the caller a message worth showing a user rather than raw
+    // Groq internals.
+    if (opts.jsonMode && isJsonValidationFailure(text)) {
+      throw new Error(
+        "The AI had trouble reading that image clearly. Try a clearer or less cluttered screenshot."
+      );
+    }
     throw new Error(`Groq API error (${res.status}): ${text}`);
   }
 
@@ -130,12 +145,9 @@ export async function groqChat(
  */
 export function parseGroqJson<T>(raw: string, fallback: T): T {
   try {
-    // This regex removes ```json ... ``` markdown wrappers if the model adds them
-    const cleaned = raw.replace(/^```json\s*/, "").replace(/\s*```$/, "");
-    const parsed = JSON.parse(cleaned);
+    const parsed = JSON.parse(raw);
     return parsed ?? fallback;
   } catch {
     return fallback;
   }
-}
 }

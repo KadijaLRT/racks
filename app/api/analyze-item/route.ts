@@ -69,21 +69,19 @@ export async function POST(req: NextRequest) {
       categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
     }
 
-    const systemPrompt = `You are a shopping-sense assistant. 
-    OUTPUT INSTRUCTIONS: You must output ONLY a valid JSON object. Do not include any markdown, 
-    no "json" prefix, no conversational text, no explanations. 
-    If you cannot fulfill the request as JSON, output empty strings for all fields.
+    const systemPrompt = `You are a shopping-sense assistant helping someone decide whether a new item is worth buying, based on what they already own. Be honest and specific, not a hype machine, the goal is to reduce regret purchases, not encourage every purchase. Use the "worn N×" figures to spot rarely-worn items that could be replaced, don't invent a replacement if nothing plausible fits.
 
-    Return this exact JSON structure:
-    {
-      "verdict": "string",
-      "matchCount": number,
-      "fillsGap": boolean,
-      "pairsWith": ["string"],
-      "completesOutfits": number,
-      "replacesItem": "string" | null,
-      "versatilityNote": "string"
-    }`;
+Return ONLY a JSON object:
+{
+  "verdict": "one direct sentence: worth it, or skip it, and why",
+  "matchCount": integer estimate of how many existing closet items this would pair well with,
+  "fillsGap": boolean, true only if this covers a real gap, false if similar to things already owned,
+  "pairsWith": [closet item id strings this pairs especially well with, max 5],
+  "completesOutfits": integer estimate of complete new outfits this unlocks,
+  "replacesItem": "name of a specific closet item this could reasonably retire, or null if nothing fits, never force one",
+  "versatilityNote": "one short phrase on practical versatility gain, or empty string if none"
+}`;
+
     const userPrompt = `New item under consideration: ${safeNewItem.name} | category: ${safeNewItem.category} | tags: ${JSON.stringify(
       safeNewItem.tags
     )}

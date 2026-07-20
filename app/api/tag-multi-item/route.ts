@@ -17,7 +17,7 @@ const VALID_CATEGORIES: ItemCategory[] = [
 interface DetectedItem {
   name: string;
   category: ItemCategory;
-  tags: Record<string, string>;
+  tags: string[];
   box: { x: number; y: number; width: number; height: number };
 }
 
@@ -60,18 +60,18 @@ export async function POST(req: NextRequest) {
       [
         buildTextMessage(
           "system",
-          `You are a fashion cataloguing assistant looking at a screenshot that may show MULTIPLE product thumbnails at once (e.g. an order history page, a cart, or a grid of products). Identify every distinct clothing/shoe/accessory item you can see, AND the location of that item's product thumbnail image within the screenshot. Return ONLY a JSON object:
+          `You are a fashion cataloguing assistant looking at a screenshot that may show MULTIPLE product thumbnails at once (e.g. an order history page, a cart, or a grid of products). Identify every distinct clothing/shoe/accessory item you can see, up to a maximum of 12, AND the location of that item's product thumbnail image within the screenshot. Return ONLY a JSON object, no markdown formatting, no code fences, no commentary:
 {
   "items": [
     {
       "name": "short descriptive name, e.g. 'Black ribbed knit top'",
       "category": "one of: ${VALID_CATEGORIES.join("/")}",
-      "tags": { color/material/etc as strings },
+      "tags": ["attribute: value strings, e.g. 'color: black', 'material: ribbed knit'"],
       "box": { "x": 0-1, "y": 0-1, "width": 0-1, "height": 0-1 }
     }
   ]
 }
-"box" is the bounding box of ONLY that item's thumbnail photo (not surrounding text/price/buttons), given as fractions of the full screenshot's width/height, top-left origin. Be as precise as you can, this is used to crop the individual photo out of the screenshot. If you can't confidently distinguish individual items, return your best guess list rather than an empty array, approximate is fine, but always include a box.`
+"box" is the bounding box of ONLY that item's thumbnail photo (not surrounding text/price/buttons), given as fractions of the full screenshot's width/height, top-left origin. Be as precise as you can, this is used to crop the individual photo out of the screenshot. If you can't confidently distinguish individual items, return your best guess list rather than an empty array, approximate is fine, but always include a box. Keep the JSON short and valid: never truncate mid-object, and stop as soon as the object is complete.`
         ),
         buildImageMessage(
           "List every distinct item you can identify in this screenshot, with a bounding box for each item's own thumbnail image.",
@@ -91,7 +91,9 @@ export async function POST(req: NextRequest) {
       .map((item) => ({
         name: item?.name || "Untitled item",
         category: VALID_CATEGORIES.includes(item?.category) ? item.category : "top",
-        tags: item?.tags || {},
+        tags: Array.isArray(item?.tags)
+          ? item.tags.filter((t): t is string => typeof t === "string")
+          : [],
         box: item.box,
       }))
       .slice(0, 20); // sane upper bound on one screenshot's worth of items

@@ -27,6 +27,7 @@ interface GroqCallOptions {
   model: string;
   jsonMode?: boolean;
   temperature?: number;
+  maxCompletionTokens?: number;
 }
 
 /**
@@ -75,6 +76,13 @@ async function callGroq(
       model: opts.model,
       messages,
       temperature: opts.temperature ?? 0.4,
+      // Groq's default max_completion_tokens (1024 on many models) is
+      // easily exceeded by a multi-item JSON array response, and
+      // reasoning-style models spend part of that budget "thinking"
+      // before writing the answer. A truncated response is syntactically
+      // invalid JSON, which Groq reports as json_validate_failed, so we
+      // always give jsonMode calls a generous ceiling.
+      max_completion_tokens: opts.maxCompletionTokens ?? (opts.jsonMode ? 4096 : 1024),
       ...(opts.jsonMode ? { response_format: { type: "json_object" } } : {}),
     }),
   });

@@ -29,7 +29,8 @@ export interface ClosetItem {
   id: string;
   category: ItemCategory;
   subcategory?: string; // free-form, see SUBCATEGORY_SUGGESTIONS for hints
-  image: string; // base64 data URL
+  image: string; // base64 data URL, front of the item
+  backImage?: string; // base64 data URL, optional back-of-item photo
   name: string; // AI-generated descriptive name
   tags: Record<string, string>; // e.g. { color: "cream", material: "linen" }
   laundryStatus: "clean" | "dirty" | "dry-clean";

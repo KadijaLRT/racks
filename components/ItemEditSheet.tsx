@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { X, Pin, PinOff, Trash2, Plus, Shuffle } from "lucide-react";
+import { useRef, useState } from "react";
+import { X, Pin, PinOff, Trash2, Plus, Shuffle, Camera, Loader2 } from "lucide-react";
 import type { ClosetItem, ItemCategory } from "@/lib/types";
 import { CATEGORIES, categoryLabel } from "@/lib/categories";
+import { fileToResizedDataUrl } from "@/lib/image";
 import StylingTipList from "@/components/StylingTipList";
 import {
   braRecommendation,
@@ -50,6 +51,51 @@ export default function ItemEditSheet({
   const [newTagKey, setNewTagKey] = useState("");
   const [newTagValue, setNewTagValue] = useState("");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [backImage, setBackImage] = useState<string | undefined>(item?.backImage);
+  const [analyzingBack, setAnalyzingBack] = useState(false);
+  const [backError, setBackError] = useState("");
+  const backFileRef = useRef<HTMLInputElement>(null);
+
+  async function handleBackPhoto(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    setBackError("");
+    setAnalyzingBack(true);
+    try {
+      const dataUrl = await fileToResizedDataUrl(file);
+      if (!dataUrl) throw new Error("Couldn't read that photo.");
+      setBackImage(dataUrl);
+
+      // AI tagging here is a nice-to-have: the back photo still saves
+      // even if this call fails, so a person can note details manually.
+      try {
+        const res = await fetch("/api/tag-item-back", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ image: dataUrl, category }),
+        });
+        const result = await res.json().catch(() => ({}));
+        if (!result?.error && result?.tags && typeof result.tags === "object") {
+          setTags((prev) => ({ ...(prev || {}), ...result.tags }));
+        }
+      } catch {
+        // Non-blocking, see comment above.
+      }
+    } catch (err) {
+      setBackError(
+        err instanceof Error ? err.message : "That photo couldn't be added."
+      );
+    } finally {
+      setAnalyzingBack(false);
+    }
+  }
+
+  function removeBackPhoto() {
+    setBackImage(undefined);
+    setBackError("");
+  }
 
   function handleSave() {
     onSave({
@@ -62,6 +108,7 @@ export default function ItemEditSheet({
       laundryStatus,
       closetStatus,
       pinned,
+      backImage: backImage || undefined,
     });
   }
 
@@ -112,16 +159,64 @@ export default function ItemEditSheet({
         </div>
 
         <div className="overflow-y-auto px-5 py-4 space-y-5 flex-1">
+          <input
+            ref={backFileRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleBackPhoto}
+          />
+
           <div className="flex flex-col md:flex-row gap-4">
-            <div className="w-full md:w-40 aspect-[3/4] rounded-2xl overflow-hidden bg-cream-100 shrink-0">
-              {item?.image ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={item.image}
-                  alt={name || "Closet item"}
-                  className="w-full h-full object-cover"
-                />
-              ) : null}
+            <div className="flex gap-2 shrink-0">
+              <div className="w-full md:w-40 aspect-[3/4] rounded-2xl overflow-hidden bg-cream-100 shrink-0">
+                {item?.image ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={item.image}
+                    alt={name || "Closet item"}
+                    className="w-full h-full object-cover"
+                  />
+                ) : null}
+              </div>
+
+              <div className="w-20 md:w-24 aspect-[3/4] rounded-2xl overflow-hidden bg-cream-100 shrink-0 relative">
+                {backImage ? (
+                  <>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={backImage}
+                      alt="Back of item"
+                      className="w-full h-full object-cover"
+                    />
+                    <button
+                      onClick={removeBackPhoto}
+                      aria-label="Remove back photo"
+                      className="absolute top-1 right-1 bg-black/50 rounded-full p-1"
+                    >
+                      <X size={11} className="text-white" />
+                    </button>
+                    <span className="absolute bottom-1 left-1 bg-black/50 text-cream text-[9px] px-1.5 py-0.5 rounded-full">
+                      Back
+                    </span>
+                  </>
+                ) : (
+                  <button
+                    onClick={() => backFileRef.current?.click()}
+                    disabled={analyzingBack}
+                    className="w-full h-full flex flex-col items-center justify-center gap-1 text-stone-400 disabled:opacity-60"
+                  >
+                    {analyzingBack ? (
+                      <Loader2 size={16} className="animate-spin" />
+                    ) : (
+                      <Camera size={16} />
+                    )}
+                    <span className="text-[9px] text-center px-1 leading-tight">
+                      {analyzingBack ? "Reading..." : "Add back photo"}
+                    </span>
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="flex-1 space-y-3">
@@ -207,6 +302,10 @@ export default function ItemEditSheet({
               </button>
             </div>
           </div>
+
+          {backError ? (
+            <p className="text-xs text-clay-700 -mt-3">{backError}</p>
+          ) : null}
 
           {category === "top" || category === "dress" || category === "set" ? (
             <StylingTipList

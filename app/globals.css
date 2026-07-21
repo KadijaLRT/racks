@@ -38,3 +38,28 @@ body {
 * {
   -webkit-tap-highlight-color: transparent;
 }
+
+/* Transient "item added" toast: fades in, holds, then fades out on its
+   own rather than requiring a dismiss tap, matching the "forgiving,
+   low-friction" feel the rest of the app aims for. */
+@keyframes toast-fade {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 6px);
+  }
+  12% {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+  82% {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -4px);
+  }
+}
+.animate-toast-fade {
+  animation: toast-fade 2.6s ease-in-out forwards;
+}

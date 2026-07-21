@@ -45,8 +45,14 @@ export default function ItemCard({ item, onSelect }: ItemCardProps) {
         </div>
       ) : null}
 
-      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/40 to-transparent px-2 py-1.5 opacity-0 group-hover:opacity-100 transition-opacity hidden md:block">
-        <p className="text-cream text-xs truncate">{name}</p>
+      <div
+        className={`absolute inset-x-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent px-2 pt-4 pb-1.5 ${
+          dirty ? "bottom-4" : "bottom-0"
+        }`}
+      >
+        <p className="text-cream text-[11px] font-medium leading-tight line-clamp-2">
+          {name}
+        </p>
       </div>
     </button>
   );

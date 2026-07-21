@@ -25,8 +25,24 @@ export default function ClosetPage() {
   const [addPickerOpen, setAddPickerOpen] = useState(false);
   const [bulkScreenshot, setBulkScreenshot] = useState<string | null>(null);
   const [bulkProcessing, setBulkProcessing] = useState(false);
+  const [addedToast, setAddedToast] = useState<{ name: string; key: number } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const bulkFileRef = useRef<HTMLInputElement>(null);
+  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    // Clear any pending fade-out timer on unmount so it doesn't fire
+    // after the page has gone away.
+    return () => {
+      if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    };
+  }, []);
+
+  function showAddedToast(name: string) {
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    setAddedToast({ name, key: Date.now() });
+    toastTimeoutRef.current = setTimeout(() => setAddedToast(null), 2600);
+  }
 
   useEffect(() => {
     closetStore.getAll().then((all) => {
@@ -94,6 +110,7 @@ export default function ClosetPage() {
         timesWorn: 0,
       });
       setItems((prev) => [saved, ...(prev || [])]);
+      showAddedToast(saved?.name || name);
     } catch (err) {
       setUploadError(
         err instanceof Error ? err.message : "That photo couldn't be added."
@@ -141,7 +158,6 @@ export default function ClosetPage() {
         ref={fileRef}
         type="file"
         accept="image/*"
-        capture="environment"
         className="hidden"
         onChange={handleFile}
       />
@@ -235,6 +251,15 @@ export default function ClosetPage() {
           <Plus size={24} />
         )}
       </button>
+
+      {addedToast ? (
+        <div
+          key={addedToast.key}
+          className="fixed bottom-24 left-1/2 z-30 max-w-[85%] rounded-full bg-stone-800/95 text-cream text-xs font-medium px-4 py-2 shadow-lg animate-toast-fade pointer-events-none"
+        >
+          Added &ldquo;{addedToast.name}&rdquo;
+        </div>
+      ) : null}
 
       {addPickerOpen ? (
         <div

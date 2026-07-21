@@ -168,6 +168,14 @@ const NECKLINE_PATHS: Record<string, (props: SVGProps<SVGSVGElement>) => ReactEl
       <rect x={47} y={50} width={6} height={4} fill={STROKE} />
     </Svg>
   ),
+  "Tie Neck": (p) => (
+    <Svg {...p}>
+      <Head />
+      <path d="M18,42 Q50,54 82,42 L85,95 L15,95 Z" />
+      <path d="M42,44 Q50,58 40,68 M58,44 Q50,58 60,68" strokeWidth={2} />
+      <circle cx={44} cy={56} r={3} opacity={0.4} strokeWidth={1.5} />
+    </Svg>
+  ),
 };
 
 export function NecklineIcon({

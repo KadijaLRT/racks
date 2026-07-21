@@ -15,7 +15,7 @@ export type ItemCategory =
   | "makeup";
 
 export const SUBCATEGORY_SUGGESTIONS: Record<ItemCategory, string[]> = {
-  top: ["t-shirt", "blouse", "tank", "sweater", "hoodie", "button-down", "crop top"],
+  top: ["t-shirt", "blouse", "tank", "camisole", "tube top", "crop top", "bralette", "sweater", "hoodie", "sweatshirt", "button-down", "henley", "polo", "turtleneck", "bodysuit", "peplum top", "wrap top", "halter top", "off-shoulder top", "tunic"],
   bottom: ["jeans", "trousers", "shorts", "skirt", "leggings", "skort"],
   dress: ["mini", "midi", "maxi", "gown"],
   set: ["matching set", "jumpsuit", "romper", "bathing suit", "sweatsuit", "tracksuit", "loungewear"],
@@ -58,6 +58,26 @@ export const JEAN_CUT_OPTIONS = [
 
 export const RISE_HEIGHT_OPTIONS = ["High-Rise", "Mid-Rise", "Low-Rise"];
 
+// Shown only when the subcategory suggests a skirt.
+export const SKIRT_LENGTH_OPTIONS = [
+  "Micro Mini",
+  "Mini",
+  "Above-Knee",
+  "Knee-Length",
+  "Midi",
+  "Tea-Length",
+  "Maxi",
+];
+
+// Shown only when the subcategory suggests shorts.
+export const SHORTS_LENGTH_OPTIONS = [
+  "Micro Short",
+  "Short",
+  "Bermuda",
+  "Knee-Length",
+  "Long / Board Short",
+];
+
 // Wash only makes sense for denim, shown conditionally when a bottom's
 // subcategory is jeans rather than for every pair of pants.
 export const WASH_OPTIONS = [
@@ -99,6 +119,7 @@ export const NECKLINE_OPTIONS = [
   "Surplice",
   "Button-Up",
   "Zip-Up",
+  "Tie Neck",
 ];
 
 export const TOP_SILHOUETTE_OPTIONS = [

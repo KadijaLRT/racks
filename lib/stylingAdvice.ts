@@ -29,8 +29,8 @@ const BRA_RULES: Array<{ keywords: string[]; style: string; bra: string }> = [
   { keywords: ["strapless", "tube top", "bandeau"], style: "strapless top", bra: "a strapless bra or bandeau bra, for a secure fit without visible straps" },
   { keywords: ["halter"], style: "halter top", bra: "a stick-on or adhesive bra, for support without showing straps" },
   { keywords: ["backless", "open back", "low back"], style: "backless top", bra: "a stick-on or backless bra, for a backless look with support and lift" },
-  { keywords: ["off-shoulder", "off shoulder", "cold shoulder"], style: "off-shoulder top", bra: "a strapless or multiway bra, for support without showing straps" },
-  { keywords: ["plunge", "deep v", "deep neck"], style: "plunge neckline top", bra: "a plunge bra or low-cut bra, for a low neckline with the right support" },
+  { keywords: ["off-shoulder", "off shoulder", "off-the-shoulder", "cold shoulder", "cold-shoulder"], style: "off-shoulder top", bra: "a strapless or multiway bra, for support without showing straps" },
+  { keywords: ["plunge", "plunging", "deep v", "deep neck"], style: "plunge neckline top", bra: "a plunge bra or low-cut bra, for a low neckline with the right support" },
   { keywords: ["t-shirt", "tee", "crewneck", "crew neck"], style: "t-shirt", bra: "a t-shirt bra or seamless bra, for a smooth silhouette under fitted fabric" },
 ];
 
@@ -56,12 +56,16 @@ export function braRecommendation(item: {
 const NECKLACE_RULES: Array<{ keywords: string[]; neckline: string; necklace: string }> = [
   { keywords: ["turtleneck", "mock neck", "high neck"], neckline: "a turtleneck or high neck", necklace: "layered long necklaces worn over the top" },
   { keywords: ["choker", "collar"], neckline: "a collared or crew neckline", necklace: "a structured choker or collar-style necklace" },
-  { keywords: ["off-shoulder", "off shoulder"], neckline: "an off-shoulder neckline", necklace: "a layered necklace to fill the open neckline" },
+  { keywords: ["off-shoulder", "off shoulder", "off-the-shoulder"], neckline: "an off-shoulder neckline", necklace: "a layered necklace to fill the open neckline" },
   { keywords: ["v-neck", "v neck"], neckline: "a v-neckline", necklace: "a long pendant necklace that follows the V" },
   { keywords: ["sweetheart"], neckline: "a sweetheart neckline", necklace: "a delicate pendant centered at the neckline" },
   { keywords: ["halter", "racerback"], neckline: "a halter neckline", necklace: "a single long pendant necklace" },
   { keywords: ["one-shoulder", "one shoulder", "asymmetric"], neckline: "a one-shoulder neckline", necklace: "an asymmetric choker or a delicate draped chain" },
   { keywords: ["square neck", "square-neck"], neckline: "a square neckline", necklace: "a pendant necklace with a geometric shape" },
+  { keywords: ["boatneck", "boat neck", "bateau"], neckline: "a boatneck", necklace: "a shorter, delicate necklace that won't compete with the wide neckline" },
+  { keywords: ["cowl neck", "cowl-neck"], neckline: "a cowl neckline", necklace: "little to no necklace, the draped fabric is already the focal point" },
+  { keywords: ["plunge", "plunging", "deep v"], neckline: "a plunging neckline", necklace: "a long pendant that follows the plunge without crowding it" },
+  { keywords: ["keyhole"], neckline: "a keyhole neckline", necklace: "a subtle chain that doesn't overlap the opening" },
   { keywords: ["crewneck", "crew neck", "round neck"], neckline: "a round neckline", necklace: "a simple pendant necklace" },
 ];
 

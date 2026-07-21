@@ -27,18 +27,95 @@ export const SUBCATEGORY_SUGGESTIONS: Record<ItemCategory, string[]> = {
 
 // Quick-pick tag values for bottoms, shown as tap-to-fill chips in the
 // item editor rather than requiring free-text entry for common,
-// well-known categories like jean cut and rise height.
+// well-known categories like pant cut and rise height.
 export const JEAN_CUT_OPTIONS = [
   "Skinny",
-  "Slim",
+  "Slim Fit",
   "Straight",
+  "Cigarette / Pencil",
+  "Boyfriend",
+  "Girlfriend",
+  "Stovepipe",
+  "Tapered / Pegged",
+  "Mom Jeans",
+  "Jogger",
   "Bootcut",
   "Flare",
+  "Bell Bottoms",
   "Wide Leg",
-  "Loose",
+  "Palazzo",
+  "Elephant Leg",
+  "Capri",
+  "Culottes",
+  "Gaucho",
+  "Clam Diggers",
+  "Barrel / Horseshoe",
+  "Cargo",
+  "Harem / Jodhpur",
+  "Sailor Pants",
 ];
 
 export const RISE_HEIGHT_OPTIONS = ["High-Rise", "Mid-Rise", "Low-Rise"];
+
+// Quick-pick tag values for tops/dresses/sets, from a common neckline
+// and construction reference guide. Selecting one of these writes a
+// plain descriptive string into tags (e.g. tags.neckline = "V-Neck"),
+// which the styling-tip matcher in lib/stylingAdvice.ts already scans
+// for keywords, so picking "V-Neck" or "Backless / Open-Back" here
+// automatically improves the bra/necklace suggestions for free.
+export const NECKLINE_OPTIONS = [
+  "Crew Neck",
+  "V-Neck",
+  "Scoop Neck",
+  "Square Neck",
+  "Sweetheart",
+  "Boatneck",
+  "Cowl Neck",
+  "Halter",
+  "Off-the-Shoulder",
+  "One-Shoulder",
+  "Mock Neck",
+  "Turtleneck",
+  "Queen Anne",
+  "Keyhole",
+  "Plunging",
+  "Illusion",
+  "Surplice",
+];
+
+export const TOP_SILHOUETTE_OPTIONS = [
+  "Crop Top",
+  "Peplum",
+  "Wrap",
+  "Asymmetrical Hem",
+  "Handkerchief Hem",
+  "Hi-Low",
+  "Boxy / Oversized",
+  "Corset / Bustier",
+  "Camisole",
+  "Tube / Strapless",
+  "Smocked / Shirred",
+  "Bodysuit",
+];
+
+export const SLEEVE_OPTIONS = [
+  "Cap Sleeve",
+  "Dolman",
+  "Raglan",
+  "Kimono Sleeve",
+  "Puff / Juliet",
+  "Bishop",
+  "Bell Sleeve",
+  "Butterfly",
+  "Cold-Shoulder",
+];
+
+export const BACK_STYLE_OPTIONS = [
+  "Racerback",
+  "Backless / Open-Back",
+  "Keyhole Back",
+  "Side Cut-Out",
+];
 
 export interface ClosetItem {
   id: string;

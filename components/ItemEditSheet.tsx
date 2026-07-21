@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { X, Pin, PinOff, Trash2, Plus, Shuffle, Camera, Loader2 } from "lucide-react";
 import type { ClosetItem, ItemCategory } from "@/lib/types";
-import { JEAN_CUT_OPTIONS, RISE_HEIGHT_OPTIONS } from "@/lib/types";
+import { JEAN_CUT_OPTIONS, RISE_HEIGHT_OPTIONS, NECKLINE_OPTIONS, TOP_SILHOUETTE_OPTIONS, SLEEVE_OPTIONS, BACK_STYLE_OPTIONS } from "@/lib/types";
 import { CATEGORIES, categoryLabel } from "@/lib/categories";
 import { fileToResizedDataUrl } from "@/lib/image";
 import StylingTipList from "@/components/StylingTipList";
@@ -222,6 +222,34 @@ export default function ItemEditSheet({
     });
   }
 
+  // Renders one labeled row of tap-to-fill chips (e.g. "Fit", "Neckline")
+  // that write into a fixed tag key. Shared by bottoms (Fit, Rise) and
+  // tops/dresses/sets (Neckline, Silhouette, Sleeve, Back style) instead
+  // of duplicating the same chip-row markup five times over.
+  function renderQuickPickRow(label: string, tagKey: string, options: string[]) {
+    return (
+      <div>
+        <p className="text-[11px] text-stone-400 mb-1">{label}</p>
+        <div className="flex flex-wrap gap-1.5">
+          {options.map((opt) => (
+            <button
+              key={opt}
+              type="button"
+              onClick={() => toggleQuickTag(tagKey, opt)}
+              className={`px-2.5 py-1 rounded-full text-[11px] ${
+                tags?.[tagKey] === opt
+                  ? "bg-emerald-600 text-cream"
+                  : "bg-cream-100 text-stone-500"
+              }`}
+            >
+              {opt}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex flex-col md:items-center md:justify-center bg-black/40">
       <div className="mt-auto md:mt-0 md:max-w-lg md:w-full bg-cream rounded-t-3xl md:rounded-3xl max-h-[92vh] md:max-h-[85vh] flex flex-col pb-safe">
@@ -432,44 +460,17 @@ export default function ItemEditSheet({
 
             {category === "bottom" ? (
               <div className="mt-3 space-y-2">
-                <div>
-                  <p className="text-[11px] text-stone-400 mb-1">Fit</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {JEAN_CUT_OPTIONS.map((opt) => (
-                      <button
-                        key={opt}
-                        type="button"
-                        onClick={() => toggleQuickTag("fit", opt)}
-                        className={`px-2.5 py-1 rounded-full text-[11px] ${
-                          tags?.fit === opt
-                            ? "bg-emerald-600 text-cream"
-                            : "bg-cream-100 text-stone-500"
-                        }`}
-                      >
-                        {opt}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <p className="text-[11px] text-stone-400 mb-1">Rise</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {RISE_HEIGHT_OPTIONS.map((opt) => (
-                      <button
-                        key={opt}
-                        type="button"
-                        onClick={() => toggleQuickTag("rise", opt)}
-                        className={`px-2.5 py-1 rounded-full text-[11px] ${
-                          tags?.rise === opt
-                            ? "bg-emerald-600 text-cream"
-                            : "bg-cream-100 text-stone-500"
-                        }`}
-                      >
-                        {opt}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                {renderQuickPickRow("Fit", "fit", JEAN_CUT_OPTIONS)}
+                {renderQuickPickRow("Rise", "rise", RISE_HEIGHT_OPTIONS)}
+              </div>
+            ) : null}
+
+            {category === "top" || category === "dress" || category === "set" ? (
+              <div className="mt-3 space-y-2">
+                {renderQuickPickRow("Neckline", "neckline", NECKLINE_OPTIONS)}
+                {renderQuickPickRow("Silhouette", "silhouette", TOP_SILHOUETTE_OPTIONS)}
+                {renderQuickPickRow("Sleeve", "sleeve", SLEEVE_OPTIONS)}
+                {renderQuickPickRow("Back style", "backStyle", BACK_STYLE_OPTIONS)}
               </div>
             ) : null}
 

@@ -30,6 +30,14 @@ export default function ClosetPage() {
     key: number;
     isError?: boolean;
   } | null>(null);
+  const [retagging, setRetagging] = useState(false);
+  const [retagProgress, setRetagProgress] = useState({ done: 0, total: 0 });
+  const [retagSummary, setRetagSummary] = useState<{
+    retagged: number;
+    stillFailed: number;
+    stoppedEarly: boolean;
+    reason?: string;
+  } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const bulkFileRef = useRef<HTMLInputElement>(null);
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -153,6 +161,80 @@ export default function ClosetPage() {
     setSelected(null);
   }
 
+  // Re-runs AI tagging for every item still named "Untitled item" (the
+  // fallback used when tagging failed at add-time, most commonly from
+  // hitting Groq's rate limit). Sequential with a short pause between
+  // calls, since firing them all at once is exactly what caused the
+  // rate limit in the first place. If a rate-limit-style error comes
+  // back mid-batch, this stops immediately rather than burning through
+  // the rest of the list on calls that would just fail the same way,
+  // and reports how far it got.
+  async function retagUntitledItems() {
+    const targets = (items || []).filter((i) => i?.name === "Untitled item");
+    if (targets.length === 0) return;
+
+    setRetagging(true);
+    setRetagSummary(null);
+    setRetagProgress({ done: 0, total: targets.length });
+
+    let retagged = 0;
+    let stillFailed = 0;
+    let stoppedEarly = false;
+    let stopReason = "";
+
+    for (let i = 0; i < targets.length; i++) {
+      const target = targets[i];
+      try {
+        const res = await fetch("/api/tag-item", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ image: target.image, category: target.category }),
+        });
+        const tagged = await res.json().catch(() => ({}));
+
+        if (tagged?.error) {
+          stillFailed += 1;
+          const reason = String(tagged.error);
+          // A rate-limit message means every remaining call would fail
+          // the same way right now; stop instead of wasting the rest
+          // of the batch (and the daily quota) on guaranteed failures.
+          if (/rate limit|usage limit/i.test(reason)) {
+            stoppedEarly = true;
+            stopReason = reason;
+            break;
+          }
+        } else if (tagged?.name) {
+          const updated: ClosetItem = {
+            ...target,
+            name: tagged.name,
+            subcategory: tagged.subcategory || target.subcategory,
+            tags: { ...(target.tags || {}), ...(tagged.tags || {}) },
+          };
+          await closetStore.update(updated);
+          setItems((prev) =>
+            (prev || []).map((it) => (it.id === updated.id ? updated : it))
+          );
+          retagged += 1;
+        } else {
+          stillFailed += 1;
+        }
+      } catch {
+        stillFailed += 1;
+      }
+
+      setRetagProgress({ done: i + 1, total: targets.length });
+
+      // Small gap between requests so this batch itself doesn't trip
+      // the per-minute limit on a closet with many untitled items.
+      if (i < targets.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      }
+    }
+
+    setRetagging(false);
+    setRetagSummary({ retagged, stillFailed, stoppedEarly, reason: stopReason });
+  }
+
   async function handleBulkFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
@@ -240,6 +322,58 @@ export default function ClosetPage() {
             {uploadError}
           </div>
         ) : null}
+
+        {(() => {
+          const untitledCount = (items || []).filter(
+            (i) => i?.name === "Untitled item"
+          ).length;
+          if (untitledCount === 0 && !retagging && !retagSummary) return null;
+
+          return (
+            <div className="mb-3 rounded-xl border border-clay-100 bg-white px-3 py-2.5">
+              {retagging ? (
+                <div className="flex items-center gap-2 text-xs text-stone-600">
+                  <Loader2 size={14} className="animate-spin shrink-0" />
+                  Retagging {retagProgress.done} of {retagProgress.total}...
+                </div>
+              ) : retagSummary ? (
+                <div className="text-xs text-stone-600">
+                  {retagSummary.retagged > 0
+                    ? `Retagged ${retagSummary.retagged} item${retagSummary.retagged === 1 ? "" : "s"}.`
+                    : null}
+                  {retagSummary.stoppedEarly ? (
+                    <span className="block mt-0.5 text-clay-700">
+                      Stopped early: {retagSummary.reason}
+                    </span>
+                  ) : retagSummary.stillFailed > 0 ? (
+                    <span className="block mt-0.5 text-stone-500">
+                      {retagSummary.stillFailed} still couldn&rsquo;t be tagged.
+                    </span>
+                  ) : null}
+                  <button
+                    onClick={() => setRetagSummary(null)}
+                    className="mt-1.5 text-emerald-700 font-medium"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs text-stone-600">
+                    {untitledCount} item{untitledCount === 1 ? "" : "s"} still need
+                    {untitledCount === 1 ? "s" : ""} tagging.
+                  </p>
+                  <button
+                    onClick={retagUntitledItems}
+                    className="shrink-0 text-xs font-medium text-emerald-700 whitespace-nowrap"
+                  >
+                    Retag now
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {loaded && filteredItems.length === 0 ? (
           <div className="text-center py-16 px-6">

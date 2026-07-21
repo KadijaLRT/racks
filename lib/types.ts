@@ -53,6 +53,7 @@ export const JEAN_CUT_OPTIONS = [
   "Cargo",
   "Harem / Jodhpur",
   "Sailor Pants",
+  "Extended / Extendo",
 ];
 
 export const RISE_HEIGHT_OPTIONS = ["High-Rise", "Mid-Rise", "Low-Rise"];

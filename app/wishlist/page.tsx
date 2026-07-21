@@ -4,8 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { Plus, Loader2, Link2, Camera, Trash2, ShoppingBag, X } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
 import { fileToResizedDataUrl } from "@/lib/image";
-import { wishlistStore, closetStore } from "@/lib/storage";
-import type { WishlistItem, ClosetItem } from "@/lib/types";
+import { wishlistStore, closetStore, measurementsStore } from "@/lib/storage";
+import type { WishlistItem, ClosetItem, UserMeasurements } from "@/lib/types";
 import { categoryEmoji } from "@/lib/categories";
 
 interface CartAnalysis {
@@ -19,6 +19,7 @@ interface CartAnalysis {
 export default function WishlistPage() {
   const [items, setItems] = useState<WishlistItem[]>([]);
   const [closetItems, setClosetItems] = useState<ClosetItem[]>([]);
+  const [measurements, setMeasurements] = useState<UserMeasurements | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
@@ -29,13 +30,16 @@ export default function WishlistPage() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    Promise.all([wishlistStore.getAll(), closetStore.getAll()]).then(
-      ([wishlist, closet]) => {
-        setItems(wishlist || []);
-        setClosetItems(closet || []);
-        setLoaded(true);
-      }
-    );
+    Promise.all([
+      wishlistStore.getAll(),
+      closetStore.getAll(),
+      measurementsStore.get(),
+    ]).then(([wishlist, closet, userMeasurements]) => {
+      setItems(wishlist || []);
+      setClosetItems(closet || []);
+      setMeasurements(userMeasurements || null);
+      setLoaded(true);
+    });
   }, []);
 
   async function tagAndAnalyze(image: string, sourceUrl?: string) {
@@ -81,6 +85,7 @@ export default function WishlistPage() {
         body: JSON.stringify({
           newItem: { name: saved.name, category: saved.category, tags: saved.tags },
           closetItems,
+          measurements,
         }),
       });
       const analysis = await analysisRes.json().catch(() => null);

@@ -1,10 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, Settings, ChevronRight } from "lucide-react";
+import { ArrowLeft, Settings, Ruler, ChevronRight } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
 
 const CARDS = [
+  {
+    href: "/profile/measurements",
+    icon: Ruler,
+    title: "Measurements & sizes",
+    blurb: "Height, weight, bra size, and clothing sizes, used to inform look and wishlist suggestions.",
+  },
   {
     href: "/settings",
     icon: Settings,
@@ -24,7 +30,7 @@ export default function ProfilePage() {
           <h1 className="text-xl font-semibold text-stone-800">Profile</h1>
         </div>
         <p className="text-xs text-stone-500 -mt-2">
-          Manage your data and account.
+          Your sizing info and data settings.
         </p>
 
         <div className="space-y-3">

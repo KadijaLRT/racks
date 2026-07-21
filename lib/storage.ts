@@ -10,6 +10,7 @@ import type {
   ColorProfile,
   StyleProfile,
   StyleInspiration,
+  UserMeasurements,
 } from "./types";
 
 // ---- id + prefix helpers -------------------------------------------------
@@ -32,6 +33,7 @@ const SINGLETON_KEY = {
   hairProfile: "hair-profile",
   colorProfile: "color-profile",
   styleProfile: "style-profile",
+  measurements: "user-measurements",
 } as const;
 
 /**
@@ -170,6 +172,9 @@ export const colorProfileStore = createSingleton<ColorProfile>(
 export const styleProfileStore = createSingleton<StyleProfile>(
   SINGLETON_KEY.styleProfile
 );
+export const measurementsStore = createSingleton<UserMeasurements>(
+  SINGLETON_KEY.measurements
+);
 
 // ---- cross-cutting helpers ----------------------------------------------
 
@@ -240,6 +245,7 @@ export async function importAllData(
     ["hairProfile", hairProfileStore],
     ["colorProfile", colorProfileStore],
     ["styleProfile", styleProfileStore],
+    ["measurements", measurementsStore],
   ];
 
   for (const [key, store] of singletonStores) {
@@ -263,7 +269,7 @@ export async function importAllData(
  * store never breaks the export.
  */
 export async function exportAllData() {
-  const [closet, wigs, looks, wishlist, trips, plans, inspirations, hair, color, style] =
+  const [closet, wigs, looks, wishlist, trips, plans, inspirations, hair, color, style, measurements] =
     await Promise.all([
       closetStore.getAll(),
       wigStore.getAll(),
@@ -275,6 +281,7 @@ export async function exportAllData() {
       hairProfileStore.get(),
       colorProfileStore.get(),
       styleProfileStore.get(),
+      measurementsStore.get(),
     ]);
 
   return {
@@ -288,6 +295,7 @@ export async function exportAllData() {
     hairProfile: hair || null,
     colorProfile: color || null,
     styleProfile: style || null,
+    measurements: measurements || null,
     exportedAt: Date.now(),
   };
 }

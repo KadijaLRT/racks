@@ -17,11 +17,12 @@ import {
   hairProfileStore,
   colorProfileStore,
   styleProfileStore,
+  measurementsStore,
   inspirationStore,
   lookStore,
   incrementTimesWorn,
 } from "@/lib/storage";
-import type { ClosetItem, WigItem, HairProfile, ColorProfile, GeneratedLook } from "@/lib/types";
+import type { ClosetItem, WigItem, HairProfile, ColorProfile, GeneratedLook, UserMeasurements } from "@/lib/types";
 
 const QUICK_PROMPTS = [
   "Work meeting",
@@ -59,6 +60,7 @@ export default function LooksPage() {
   const [wigs, setWigs] = useState<WigItem[]>([]);
   const [hairProfile, setHairProfile] = useState<HairProfile | null>(null);
   const [colorProfile, setColorProfile] = useState<ColorProfile | null>(null);
+  const [measurements, setMeasurements] = useState<UserMeasurements | null>(null);
   const [styleDescription, setStyleDescription] = useState("");
   const [styleKeywords, setStyleKeywords] = useState<string[]>([]);
 
@@ -84,13 +86,15 @@ export default function LooksPage() {
       hairProfileStore.get(),
       colorProfileStore.get(),
       styleProfileStore.get(),
+      measurementsStore.get(),
       inspirationStore.getAll(),
       lookStore.getAll(),
-    ]).then(([items, wigList, hair, color, style, inspirations, looks]) => {
+    ]).then(([items, wigList, hair, color, style, userMeasurements, inspirations, looks]) => {
       setClosetItems(items || []);
       setWigs(wigList || []);
       setHairProfile(hair || null);
       setColorProfile(color || null);
+      setMeasurements(userMeasurements || null);
       setStyleDescription(style?.description || "");
       setStyleKeywords((inspirations || []).flatMap((i) => i.keywords || []));
       setSavedLooks(looks || []);
@@ -140,6 +144,7 @@ export default function LooksPage() {
           wigs,
           hairProfile,
           colorProfile,
+          measurements,
           styleDescription,
           styleKeywords,
           previousLook: instruction && result ? result : null,

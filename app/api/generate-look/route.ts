@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { groqChat, parseGroqJson, buildTextMessage, TEXT_MODEL } from "@/lib/groq";
 import { sanitizeGroqText, sanitizeGroqPayload } from "@/lib/groqSanitizer";
-import type { ClosetItem, WigItem, HairProfile, ColorProfile } from "@/lib/types";
+import type { ClosetItem, WigItem, HairProfile, ColorProfile, UserMeasurements } from "@/lib/types";
 
 interface GenerateLookRequestBody {
   prompt?: string;
@@ -11,6 +11,7 @@ interface GenerateLookRequestBody {
   hairProfile?: HairProfile | null;
   weather?: string;
   colorProfile?: ColorProfile | null;
+  measurements?: UserMeasurements | null;
   styleDescription?: string;
   styleKeywords?: string[];
   previousLook?: {
@@ -68,6 +69,7 @@ export async function POST(req: NextRequest) {
     const wigs = Array.isArray(body?.wigs) ? body!.wigs : [];
     const hairProfile = body?.hairProfile || null;
     const colorProfile = body?.colorProfile || null;
+    const measurements = body?.measurements || null;
     const previousLook = body?.previousLook || null;
 
     const wearable = items.filter(
@@ -129,6 +131,21 @@ export async function POST(req: NextRequest) {
           .join(", ")}. Prefer items leaning toward best colors when reasonable, never force a mismatch.`
       : "No color analysis on file.";
 
+    const measurementsParts: string[] = [];
+    if (measurements?.height) measurementsParts.push(`height ${sanitizeGroqText(measurements.height)}`);
+    if (measurements?.weight) measurementsParts.push(`weight ${sanitizeGroqText(measurements.weight)}`);
+    if (measurements?.braSize) measurementsParts.push(`bra size ${sanitizeGroqText(measurements.braSize)}`);
+    if (measurements?.topSize) measurementsParts.push(`top size ${sanitizeGroqText(measurements.topSize)}`);
+    if (measurements?.bottomSize) measurementsParts.push(`bottom size ${sanitizeGroqText(measurements.bottomSize)}`);
+    if (measurements?.dressSize) measurementsParts.push(`dress size ${sanitizeGroqText(measurements.dressSize)}`);
+    if (measurements?.shoeSize) measurementsParts.push(`shoe size ${sanitizeGroqText(measurements.shoeSize)}`);
+    const measurementsContext =
+      measurementsParts.length > 0
+        ? `User's measurements/sizes: ${measurementsParts.join(", ")}${
+            measurements?.notes ? `. Fit notes: "${sanitizeGroqText(measurements.notes)}"` : ""
+          }. Use this only as soft fit-awareness context (e.g. favor relaxed/stretch pieces if sizing suggests a snugger fit could be uncomfortable, or mention true-to-size confidence in reasoning), never as a hard filter, since you have no actual garment measurements to compare against.`
+        : "No measurements on file.";
+
     const styleParts: string[] = [];
     if (styleDescription) {
       styleParts.push(`User describes their personal style as: "${styleDescription}"`);
@@ -185,6 +202,8 @@ ${moodContext}
 ${hairContext}
 
 ${colorContext}
+
+${measurementsContext}
 
 ${styleContext}
 

@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { X, Pin, PinOff, Trash2, Plus, Shuffle, Camera, Loader2 } from "lucide-react";
 import type { ClosetItem, ItemCategory } from "@/lib/types";
+import { JEAN_CUT_OPTIONS, RISE_HEIGHT_OPTIONS } from "@/lib/types";
 import { CATEGORIES, categoryLabel } from "@/lib/categories";
 import { fileToResizedDataUrl } from "@/lib/image";
 import StylingTipList from "@/components/StylingTipList";
@@ -51,6 +52,8 @@ export default function ItemEditSheet({
   const [pinned, setPinned] = useState(Boolean(item?.pinned));
   const [newTagKey, setNewTagKey] = useState("");
   const [newTagValue, setNewTagValue] = useState("");
+  const [editingTagKey, setEditingTagKey] = useState<string | null>(null);
+  const [editingTagValue, setEditingTagValue] = useState("");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [backImage, setBackImage] = useState<string | undefined>(item?.backImage);
   const [analyzingBack, setAnalyzingBack] = useState(false);
@@ -175,6 +178,46 @@ export default function ItemEditSheet({
     setTags((prev) => {
       const next = { ...(prev || {}) };
       delete next[key];
+      return next;
+    });
+    if (editingTagKey === key) {
+      setEditingTagKey(null);
+      setEditingTagValue("");
+    }
+  }
+
+  function startEditingTag(key: string, value: string) {
+    setEditingTagKey(key);
+    setEditingTagValue(value);
+  }
+
+  function commitEditingTag() {
+    if (!editingTagKey) return;
+    const value = editingTagValue.trim();
+    setTags((prev) => {
+      const next = { ...(prev || {}) };
+      if (value) {
+        next[editingTagKey] = value;
+      } else {
+        delete next[editingTagKey];
+      }
+      return next;
+    });
+    setEditingTagKey(null);
+    setEditingTagValue("");
+  }
+
+  // Toggle a quick-pick chip (e.g. fit: "Skinny") on/off under a fixed
+  // key, so tapping it again clears the selection instead of stacking
+  // duplicate values.
+  function toggleQuickTag(key: string, value: string) {
+    setTags((prev) => {
+      const next = { ...(prev || {}) };
+      if (next[key] === value) {
+        delete next[key];
+      } else {
+        next[key] = value;
+      }
       return next;
     });
   }
@@ -334,22 +377,102 @@ export default function ItemEditSheet({
           <div>
             <label className="text-xs text-stone-500">Tags</label>
             <div className="flex flex-wrap gap-2 mt-1.5">
-              {Object.entries(tags || {}).map(([key, value]) => (
-                <span
-                  key={key}
-                  className="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-700 text-xs px-2.5 py-1 rounded-full"
-                >
-                  {key}: {value}
-                  <button
-                    onClick={() => removeTag(key)}
-                    aria-label={`Remove ${key} tag`}
-                    className="text-emerald-700/60 hover:text-emerald-700"
+              {Object.entries(tags || {}).map(([key, value]) =>
+                editingTagKey === key ? (
+                  <span
+                    key={key}
+                    className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 text-xs px-2 py-1 rounded-full"
                   >
-                    <X size={12} />
+                    <span className="whitespace-nowrap">{key}:</span>
+                    <input
+                      autoFocus
+                      value={editingTagValue}
+                      onChange={(e) => setEditingTagValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") commitEditingTag();
+                        if (e.key === "Escape") {
+                          setEditingTagKey(null);
+                          setEditingTagValue("");
+                        }
+                      }}
+                      onBlur={commitEditingTag}
+                      className="w-20 bg-white rounded-full px-2 py-0.5 text-xs border border-emerald-200 focus:outline-none"
+                    />
+                  </span>
+                ) : (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => startEditingTag(key, value)}
+                    className="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-700 text-xs px-2.5 py-1 rounded-full"
+                  >
+                    {key}: {value}
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeTag(key);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.stopPropagation();
+                          removeTag(key);
+                        }
+                      }}
+                      aria-label={`Remove ${key} tag`}
+                      className="text-emerald-700/60 hover:text-emerald-700"
+                    >
+                      <X size={12} />
+                    </span>
                   </button>
-                </span>
-              ))}
+                )
+              )}
             </div>
+
+            {category === "bottom" ? (
+              <div className="mt-3 space-y-2">
+                <div>
+                  <p className="text-[11px] text-stone-400 mb-1">Fit</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {JEAN_CUT_OPTIONS.map((opt) => (
+                      <button
+                        key={opt}
+                        type="button"
+                        onClick={() => toggleQuickTag("fit", opt)}
+                        className={`px-2.5 py-1 rounded-full text-[11px] ${
+                          tags?.fit === opt
+                            ? "bg-emerald-600 text-cream"
+                            : "bg-cream-100 text-stone-500"
+                        }`}
+                      >
+                        {opt}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-[11px] text-stone-400 mb-1">Rise</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {RISE_HEIGHT_OPTIONS.map((opt) => (
+                      <button
+                        key={opt}
+                        type="button"
+                        onClick={() => toggleQuickTag("rise", opt)}
+                        className={`px-2.5 py-1 rounded-full text-[11px] ${
+                          tags?.rise === opt
+                            ? "bg-emerald-600 text-cream"
+                            : "bg-cream-100 text-stone-500"
+                        }`}
+                      >
+                        {opt}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
             <div className="flex gap-2 mt-2">
               <input
                 value={newTagKey}

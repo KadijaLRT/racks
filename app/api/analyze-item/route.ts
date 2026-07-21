@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { groqChat, parseGroqJson, buildTextMessage, TEXT_MODEL } from "@/lib/groq";
-import { sanitizeGroqPayload } from "@/lib/groqSanitizer";
-import type { ClosetItem, ItemCategory } from "@/lib/types";
+import { sanitizeGroqPayload, sanitizeGroqText } from "@/lib/groqSanitizer";
+import type { ClosetItem, ItemCategory, UserMeasurements } from "@/lib/types";
 
 interface NewItemInput {
   name?: string;
@@ -12,6 +12,7 @@ interface NewItemInput {
 interface AnalyzeItemBody {
   newItem?: NewItemInput;
   closetItems?: ClosetItem[];
+  measurements?: UserMeasurements | null;
 }
 
 interface AnalysisResult {
@@ -39,6 +40,7 @@ export async function POST(req: NextRequest) {
     const body = (await req.json().catch(() => null)) as AnalyzeItemBody | null;
     const newItem = body?.newItem;
     const closetItems = Array.isArray(body?.closetItems) ? body!.closetItems : [];
+    const measurements = body?.measurements || null;
 
     if (!newItem) {
       return NextResponse.json({ error: "Missing item data." }, { status: 400 });
@@ -69,7 +71,22 @@ export async function POST(req: NextRequest) {
       categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
     }
 
-    const systemPrompt = `You are a shopping-sense assistant helping someone decide whether a new item is worth buying, based on what they already own. Be honest and specific, not a hype machine, the goal is to reduce regret purchases, not encourage every purchase. Use the "worn N×" figures to spot rarely-worn items that could be replaced, don't invent a replacement if nothing plausible fits.
+    const sizeParts: string[] = [];
+    if (measurements?.topSize) sizeParts.push(`top size ${measurements.topSize}`);
+    if (measurements?.bottomSize) sizeParts.push(`bottom size ${measurements.bottomSize}`);
+    if (measurements?.dressSize) sizeParts.push(`dress size ${measurements.dressSize}`);
+    if (measurements?.braSize) sizeParts.push(`bra size ${measurements.braSize}`);
+    if (measurements?.shoeSize) sizeParts.push(`shoe size ${measurements.shoeSize}`);
+    if (measurements?.height) sizeParts.push(`height ${measurements.height}`);
+    if (measurements?.weight) sizeParts.push(`weight ${measurements.weight}`);
+    const sizeContext = sizeParts.length > 0 ? sizeParts.join(", ") : "";
+    const fitNotes = sanitizeGroqText(measurements?.notes || "");
+
+    const systemPrompt = `You are a shopping-sense assistant helping someone decide whether a new item is worth buying, based on what they already own. Be honest and specific, not a hype machine, the goal is to reduce regret purchases, not encourage every purchase. Use the "worn N×" figures to spot rarely-worn items that could be replaced, don't invent a replacement if nothing plausible fits.${
+      sizeContext
+        ? ` The person's sizes are provided below, if the item's tags mention a specific size that clearly conflicts with theirs, factor that into the verdict (e.g. flag a likely fit mismatch), but don't fabricate a sizing concern when the item's own size isn't stated.`
+        : ""
+    }
 
 Return ONLY a JSON object:
 {
@@ -87,6 +104,9 @@ Return ONLY a JSON object:
     )}
 
 Closet category counts: ${JSON.stringify(categoryCounts)}
+${sizeContext ? `\nPerson's sizes: ${sizeContext}` : ""}${
+      fitNotes ? `\nFit notes from the person: ${fitNotes}` : ""
+    }
 
 Full closet (with wear counts):
 ${closetList || "(closet is empty)"}`;

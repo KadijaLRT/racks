@@ -18,12 +18,27 @@ export const SUBCATEGORY_SUGGESTIONS: Record<ItemCategory, string[]> = {
   top: ["t-shirt", "blouse", "tank", "sweater", "button-down", "crop top"],
   bottom: ["jeans", "trousers", "shorts", "skirt", "leggings"],
   dress: ["mini", "midi", "maxi", "gown"],
-  set: ["matching set", "jumpsuit", "romper"],
+  set: ["matching set", "jumpsuit", "romper", "bathing suit"],
   outerwear: ["jacket", "coat", "blazer", "cardigan", "vest"],
   shoes: ["sneakers", "heels", "boots", "flats", "sandals"],
   accessory: ["bag", "jewelry", "belt", "scarf", "hat", "sunglasses"],
   makeup: ["face", "eyes", "lips", "cheeks"],
 };
+
+// Quick-pick tag values for bottoms, shown as tap-to-fill chips in the
+// item editor rather than requiring free-text entry for common,
+// well-known categories like jean cut and rise height.
+export const JEAN_CUT_OPTIONS = [
+  "Skinny",
+  "Slim",
+  "Straight",
+  "Bootcut",
+  "Flare",
+  "Wide Leg",
+  "Loose",
+];
+
+export const RISE_HEIGHT_OPTIONS = ["High-Rise", "Mid-Rise", "Low-Rise"];
 
 export interface ClosetItem {
   id: string;
@@ -110,6 +125,23 @@ export interface ColorProfile {
   season: string;
   bestColors: string[];
   avoidColors: string[];
+  updatedAt: number;
+}
+
+// All fields are free-form strings rather than rigid numeric fields with
+// enforced units, since people express these differently (e.g. "5'6"
+// vs "168 cm", "34D" vs "36C") and this is a stylist app, not a fitness
+// tracker; forcing a unit system would just add friction for no benefit
+// to how this data is actually used (AI reasoning context, not math).
+export interface UserMeasurements {
+  height?: string;
+  weight?: string;
+  braSize?: string;
+  topSize?: string;
+  bottomSize?: string;
+  dressSize?: string;
+  shoeSize?: string;
+  notes?: string;
   updatedAt: number;
 }
 

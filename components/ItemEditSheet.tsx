@@ -230,7 +230,7 @@ export default function ItemEditSheet({
                 onClick={() => frontFileRef.current?.click()}
                 disabled={changingFront}
                 aria-label="Change photo"
-                className="relative w-full md:w-40 aspect-[3/4] rounded-2xl overflow-hidden bg-cream-100 shrink-0 group disabled:opacity-80"
+                className="relative w-32 md:w-40 aspect-[3/4] rounded-2xl overflow-hidden bg-cream-100 shrink-0 group disabled:opacity-80"
               >
                 {image ? (
                   // eslint-disable-next-line @next/next/no-img-element

@@ -1,9 +1,9 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { X, Pin, PinOff, Trash2, Plus, Shuffle, Camera, Loader2 } from "lucide-react";
+import { X, Pin, PinOff, Trash2, Plus, Shuffle, Camera, Loader2, ChevronDown } from "lucide-react";
 import type { ClosetItem, ItemCategory } from "@/lib/types";
-import { JEAN_CUT_OPTIONS, RISE_HEIGHT_OPTIONS, NECKLINE_OPTIONS, TOP_SILHOUETTE_OPTIONS, SLEEVE_OPTIONS, BACK_STYLE_OPTIONS } from "@/lib/types";
+import { JEAN_CUT_OPTIONS, RISE_HEIGHT_OPTIONS, NECKLINE_OPTIONS, TOP_SILHOUETTE_OPTIONS, SLEEVE_OPTIONS, BACK_STYLE_OPTIONS, SUBCATEGORY_SUGGESTIONS } from "@/lib/types";
 import { CATEGORIES, categoryLabel } from "@/lib/categories";
 import { fileToResizedDataUrl } from "@/lib/image";
 import StylingTipList from "@/components/StylingTipList";
@@ -54,6 +54,7 @@ export default function ItemEditSheet({
   const [newTagValue, setNewTagValue] = useState("");
   const [editingTagKey, setEditingTagKey] = useState<string | null>(null);
   const [editingTagValue, setEditingTagValue] = useState("");
+  const [quickPicksOpen, setQuickPicksOpen] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [backImage, setBackImage] = useState<string | undefined>(item?.backImage);
   const [analyzingBack, setAnalyzingBack] = useState(false);
@@ -238,6 +239,36 @@ export default function ItemEditSheet({
               onClick={() => toggleQuickTag(tagKey, opt)}
               className={`px-2.5 py-1 rounded-full text-[11px] ${
                 tags?.[tagKey] === opt
+                  ? "bg-emerald-600 text-cream"
+                  : "bg-cream-100 text-stone-500"
+              }`}
+            >
+              {opt}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Subcategory is a plain string field on the item, not a tag, so it
+  // gets its own toggle handler: tapping the currently-selected chip
+  // clears it back to freeform, tapping another replaces it outright.
+  function renderSubcategoryQuickPicks(options: string[]) {
+    if (!options || options.length === 0) return null;
+    return (
+      <div>
+        <p className="text-[11px] text-stone-400 mb-1">Subcategory</p>
+        <div className="flex flex-wrap gap-1.5">
+          {options.map((opt) => (
+            <button
+              key={opt}
+              type="button"
+              onClick={() =>
+                setSubcategory((prev) => (prev === opt ? "" : opt))
+              }
+              className={`px-2.5 py-1 rounded-full text-[11px] capitalize ${
+                subcategory === opt
                   ? "bg-emerald-600 text-cream"
                   : "bg-cream-100 text-stone-500"
               }`}
@@ -458,19 +489,55 @@ export default function ItemEditSheet({
               )}
             </div>
 
-            {category === "bottom" ? (
-              <div className="mt-3 space-y-2">
-                {renderQuickPickRow("Fit", "fit", JEAN_CUT_OPTIONS)}
-                {renderQuickPickRow("Rise", "rise", RISE_HEIGHT_OPTIONS)}
-              </div>
-            ) : null}
-
-            {category === "top" || category === "dress" || category === "set" ? (
-              <div className="mt-3 space-y-2">
-                {renderQuickPickRow("Neckline", "neckline", NECKLINE_OPTIONS)}
-                {renderQuickPickRow("Silhouette", "silhouette", TOP_SILHOUETTE_OPTIONS)}
-                {renderQuickPickRow("Sleeve", "sleeve", SLEEVE_OPTIONS)}
-                {renderQuickPickRow("Back style", "backStyle", BACK_STYLE_OPTIONS)}
+            {category === "bottom" ||
+            category === "top" ||
+            category === "dress" ||
+            category === "set" ? (
+              <div className="mt-3 rounded-xl border border-clay-100 overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setQuickPicksOpen((o) => !o)}
+                  className="w-full flex items-center justify-between px-3 py-2 bg-cream-50 text-left"
+                >
+                  <span className="text-xs font-medium text-stone-600">
+                    Quick picks
+                  </span>
+                  <ChevronDown
+                    size={14}
+                    className={`text-stone-400 transition-transform ${
+                      quickPicksOpen ? "rotate-180" : ""
+                    }`}
+                  />
+                </button>
+                {quickPicksOpen ? (
+                  <div className="p-3 space-y-2.5 bg-white">
+                    {renderSubcategoryQuickPicks(
+                      SUBCATEGORY_SUGGESTIONS[category] || []
+                    )}
+                    {category === "bottom" ? (
+                      <>
+                        {renderQuickPickRow("Fit", "fit", JEAN_CUT_OPTIONS)}
+                        {renderQuickPickRow("Rise", "rise", RISE_HEIGHT_OPTIONS)}
+                      </>
+                    ) : null}
+                    {category === "top" || category === "dress" || category === "set" ? (
+                      <>
+                        {renderQuickPickRow("Neckline", "neckline", NECKLINE_OPTIONS)}
+                        {renderQuickPickRow(
+                          "Silhouette",
+                          "silhouette",
+                          TOP_SILHOUETTE_OPTIONS
+                        )}
+                        {renderQuickPickRow("Sleeve", "sleeve", SLEEVE_OPTIONS)}
+                        {renderQuickPickRow(
+                          "Back style",
+                          "backStyle",
+                          BACK_STYLE_OPTIONS
+                        )}
+                      </>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
             ) : null}
 

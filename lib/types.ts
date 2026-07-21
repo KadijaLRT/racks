@@ -58,6 +58,21 @@ export const JEAN_CUT_OPTIONS = [
 
 export const RISE_HEIGHT_OPTIONS = ["High-Rise", "Mid-Rise", "Low-Rise"];
 
+// Wash only makes sense for denim, shown conditionally when a bottom's
+// subcategory is jeans rather than for every pair of pants.
+export const WASH_OPTIONS = [
+  "Light Wash",
+  "Medium Wash",
+  "Dark Wash",
+  "Black Wash",
+  "Raw / Unwashed",
+  "Acid Wash",
+  "Stonewash",
+  "Distressed",
+  "Bleached",
+  "Ombre",
+];
+
 // Quick-pick tag values for tops/dresses/sets, from a common neckline
 // and construction reference guide. Selecting one of these writes a
 // plain descriptive string into tags (e.g. tags.neckline = "V-Neck"),
@@ -116,6 +131,43 @@ export const BACK_STYLE_OPTIONS = [
   "Backless / Open-Back",
   "Keyhole Back",
   "Side Cut-Out",
+];
+
+// Curated color quick-picks, universal across categories. Deliberately
+// the same vocabulary as the gold/silver jewelry-pairing lists in
+// lib/stylingAdvice.ts (not a coincidence): picking "Emerald" or "Blush"
+// here writes it into tags.color, which jewelryToneRecommendation
+// already scans for keywords, so the jewelry-tone tip improves for free.
+export const COLOR_OPTIONS = [
+  "Black",
+  "White",
+  "Gray",
+  "Ivory",
+  "Cream",
+  "Beige",
+  "Caramel",
+  "Chocolate",
+  "Mustard",
+  "Peach",
+  "Coral",
+  "Terracotta",
+  "Ruby",
+  "Burgundy",
+  "Blush",
+  "Rose",
+  "Fuchsia",
+  "Magenta",
+  "Plum",
+  "Lilac",
+  "Violet",
+  "Sky Blue",
+  "Cerulean",
+  "Navy",
+  "Teal",
+  "Emerald",
+  "Olive",
+  "Forest",
+  "Mint",
 ];
 
 export interface ClosetItem {

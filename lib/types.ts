@@ -15,10 +15,10 @@ export type ItemCategory =
   | "makeup";
 
 export const SUBCATEGORY_SUGGESTIONS: Record<ItemCategory, string[]> = {
-  top: ["t-shirt", "blouse", "tank", "sweater", "button-down", "crop top"],
+  top: ["t-shirt", "blouse", "tank", "sweater", "hoodie", "button-down", "crop top"],
   bottom: ["jeans", "trousers", "shorts", "skirt", "leggings", "skort"],
   dress: ["mini", "midi", "maxi", "gown"],
-  set: ["matching set", "jumpsuit", "romper", "bathing suit"],
+  set: ["matching set", "jumpsuit", "romper", "bathing suit", "sweatsuit", "tracksuit", "loungewear"],
   outerwear: ["jacket", "coat", "blazer", "cardigan", "vest"],
   shoes: ["sneakers", "heels", "boots", "flats", "sandals"],
   accessory: ["bag", "jewelry", "belt", "scarf", "hat", "sunglasses"],
@@ -98,6 +98,7 @@ export const NECKLINE_OPTIONS = [
   "Illusion",
   "Surplice",
   "Button-Up",
+  "Zip-Up",
 ];
 
 export const TOP_SILHOUETTE_OPTIONS = [
@@ -114,6 +115,40 @@ export const TOP_SILHOUETTE_OPTIONS = [
   "Smocked / Shirred",
   "Bodysuit",
 ];
+
+// Shown only when the subcategory suggests a sweater, since knit type
+// doesn't apply to a t-shirt or blouse.
+export const KNIT_TYPE_OPTIONS = [
+  "Cable Knit",
+  "Chunky Knit",
+  "Fine Knit",
+  "Ribbed Knit",
+  "Fair Isle",
+  "Cashmere",
+  "Cardigan (Open-Front)",
+];
+
+// Shown only when the subcategory suggests a hoodie.
+export const HOOD_STYLE_OPTIONS = [
+  "Pullover",
+  "Zip-Up",
+  "Oversized Hood",
+  "Fitted Hood",
+  "Drawstring Hood",
+];
+
+export const HOOD_POCKET_OPTIONS = ["Kangaroo Pocket", "Zip Pockets", "No Pocket"];
+
+// Shown only when the subcategory suggests a sweatsuit/tracksuit.
+export const SWEATSUIT_FABRIC_OPTIONS = [
+  "Fleece",
+  "French Terry",
+  "Velour",
+  "Waffle Knit",
+  "Jersey",
+];
+
+export const SWEATSUIT_FIT_OPTIONS = ["Relaxed", "Fitted", "Oversized", "Cropped"];
 
 // Length is its own quick-pick row, distinct from sleeve construction
 // style, so a top can get both a length (e.g. "Short Sleeve") and a

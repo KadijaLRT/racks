@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { X, Pin, PinOff, Trash2, Plus, Shuffle, Camera, Loader2, ChevronDown, Sparkles } from "lucide-react";
 import type { ClosetItem, ItemCategory } from "@/lib/types";
-import { JEAN_CUT_OPTIONS, RISE_HEIGHT_OPTIONS, NECKLINE_OPTIONS, TOP_SILHOUETTE_OPTIONS, SLEEVE_LENGTH_OPTIONS, SLEEVE_OPTIONS, BACK_STYLE_OPTIONS, SUBCATEGORY_SUGGESTIONS, COLOR_OPTIONS, WASH_OPTIONS, OUTERWEAR_CLOSURE_OPTIONS, OUTERWEAR_LENGTH_OPTIONS, SHOE_HEEL_OPTIONS, SHOE_TOE_OPTIONS, ACCESSORY_MATERIAL_OPTIONS, MAKEUP_FINISH_OPTIONS, MAKEUP_TYPE_OPTIONS, makeupShadeOptionsForType } from "@/lib/types";
+import { JEAN_CUT_OPTIONS, RISE_HEIGHT_OPTIONS, NECKLINE_OPTIONS, TOP_SILHOUETTE_OPTIONS, SLEEVE_LENGTH_OPTIONS, SLEEVE_OPTIONS, BACK_STYLE_OPTIONS, SUBCATEGORY_SUGGESTIONS, COLOR_OPTIONS, WASH_OPTIONS, OUTERWEAR_CLOSURE_OPTIONS, OUTERWEAR_LENGTH_OPTIONS, SHOE_HEEL_OPTIONS, SHOE_TOE_OPTIONS, ACCESSORY_MATERIAL_OPTIONS, MAKEUP_FINISH_OPTIONS, MAKEUP_TYPE_OPTIONS, makeupShadeOptionsForType, KNIT_TYPE_OPTIONS, HOOD_STYLE_OPTIONS, HOOD_POCKET_OPTIONS, SWEATSUIT_FABRIC_OPTIONS, SWEATSUIT_FIT_OPTIONS } from "@/lib/types";
 import { CATEGORIES, categoryLabel } from "@/lib/categories";
 import { fileToResizedDataUrl } from "@/lib/image";
 import StylingTipList from "@/components/StylingTipList";
@@ -708,6 +708,40 @@ export default function ItemEditSheet({
                         "backStyle",
                         BACK_STYLE_OPTIONS
                       )}
+                      {subcategory.toLowerCase().includes("sweater") ||
+                      subcategory.toLowerCase().includes("cardigan")
+                        ? renderQuickPickRow("Knit Type", "knitType", KNIT_TYPE_OPTIONS)
+                        : null}
+                      {subcategory.toLowerCase().includes("hoodie") ? (
+                        <>
+                          {renderQuickPickRow(
+                            "Hood Style",
+                            "hoodStyle",
+                            HOOD_STYLE_OPTIONS
+                          )}
+                          {renderQuickPickRow(
+                            "Pocket",
+                            "pocket",
+                            HOOD_POCKET_OPTIONS
+                          )}
+                        </>
+                      ) : null}
+                      {subcategory.toLowerCase().includes("sweatsuit") ||
+                      subcategory.toLowerCase().includes("tracksuit") ||
+                      subcategory.toLowerCase().includes("loungewear") ? (
+                        <>
+                          {renderQuickPickRow(
+                            "Fabric",
+                            "fabric",
+                            SWEATSUIT_FABRIC_OPTIONS
+                          )}
+                          {renderQuickPickRow(
+                            "Fit",
+                            "sweatsuitFit",
+                            SWEATSUIT_FIT_OPTIONS
+                          )}
+                        </>
+                      ) : null}
                     </>
                   ) : null}
                   {category === "outerwear" ? (

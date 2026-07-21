@@ -67,6 +67,7 @@ const NECKLACE_RULES: Array<{ keywords: string[]; neckline: string; necklace: st
   { keywords: ["plunge", "plunging", "deep v"], neckline: "a plunging neckline", necklace: "a long pendant that follows the plunge without crowding it" },
   { keywords: ["keyhole"], neckline: "a keyhole neckline", necklace: "a subtle chain that doesn't overlap the opening" },
   { keywords: ["button-up", "button up", "button-down"], neckline: "a button-up neckline", necklace: "a simple pendant that peeks out where the collar opens" },
+  { keywords: ["zip-up", "zip up", "full zip"], neckline: "a zip-up neckline", necklace: "little to no necklace when zipped high, a short pendant if worn partly unzipped" },
   { keywords: ["crewneck", "crew neck", "round neck"], neckline: "a round neckline", necklace: "a simple pendant necklace" },
 ];
 

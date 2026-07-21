@@ -97,6 +97,7 @@ export const NECKLINE_OPTIONS = [
   "Plunging",
   "Illusion",
   "Surplice",
+  "Button-Up",
 ];
 
 export const TOP_SILHOUETTE_OPTIONS = [

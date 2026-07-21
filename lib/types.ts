@@ -107,6 +107,7 @@ export const TOP_SILHOUETTE_OPTIONS = [
   "Wrap",
   "Asymmetrical Hem",
   "Handkerchief Hem",
+  "Lettuce Hem",
   "Hi-Low",
   "Boxy / Oversized",
   "Corset / Bustier",
@@ -157,6 +158,7 @@ export const SWEATSUIT_FIT_OPTIONS = ["Relaxed", "Fitted", "Oversized", "Cropped
 // mixed into one long list.
 export const SLEEVE_LENGTH_OPTIONS = [
   "Sleeveless",
+  "Spaghetti Strap",
   "Cap Sleeve",
   "Short Sleeve",
   "Elbow-Length",
@@ -186,8 +188,14 @@ export const SLEEVE_OPTIONS = [
 export const BACK_STYLE_OPTIONS = [
   "Racerback",
   "Backless / Open-Back",
+  "Low V-Back",
   "Keyhole Back",
   "Side Cut-Out",
+  "Caged Back",
+  "Cross-Back",
+  "Lace-Up Back",
+  "Zip Back",
+  "Button Back",
 ];
 
 // Outerwear-specific quick-picks.

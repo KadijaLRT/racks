@@ -1,12 +1,13 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { X, Pin, PinOff, Trash2, Plus, Shuffle, Camera, Loader2, ChevronDown, Sparkles } from "lucide-react";
+import { X, Pin, PinOff, Trash2, Plus, Shuffle, Camera, Loader2, ChevronDown, Sparkles, Image as ImageIcon } from "lucide-react";
 import type { ClosetItem, ItemCategory } from "@/lib/types";
 import { JEAN_CUT_OPTIONS, RISE_HEIGHT_OPTIONS, NECKLINE_OPTIONS, TOP_SILHOUETTE_OPTIONS, SLEEVE_LENGTH_OPTIONS, SLEEVE_OPTIONS, BACK_STYLE_OPTIONS, SUBCATEGORY_SUGGESTIONS, COLOR_OPTIONS, WASH_OPTIONS, OUTERWEAR_CLOSURE_OPTIONS, OUTERWEAR_LENGTH_OPTIONS, SHOE_HEEL_OPTIONS, SHOE_TOE_OPTIONS, ACCESSORY_MATERIAL_OPTIONS, MAKEUP_FINISH_OPTIONS, MAKEUP_TYPE_OPTIONS, makeupShadeOptionsForType, KNIT_TYPE_OPTIONS, HOOD_STYLE_OPTIONS, HOOD_POCKET_OPTIONS, SWEATSUIT_FABRIC_OPTIONS, SWEATSUIT_FIT_OPTIONS } from "@/lib/types";
 import { CATEGORIES, categoryLabel } from "@/lib/categories";
 import { fileToResizedDataUrl } from "@/lib/image";
 import StylingTipList from "@/components/StylingTipList";
+import StyleGuideModal from "@/components/StyleGuideModal";
 import {
   braRecommendation,
   necklaceRecommendation,
@@ -98,6 +99,7 @@ export default function ItemEditSheet({
   const [editingTagKey, setEditingTagKey] = useState<string | null>(null);
   const [editingTagValue, setEditingTagValue] = useState("");
   const [quickPicksOpen, setQuickPicksOpen] = useState(false);
+  const [styleGuideOpen, setStyleGuideOpen] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [backImage, setBackImage] = useState<string | undefined>(item?.backImage);
   const [analyzingBack, setAnalyzingBack] = useState(false);
@@ -656,21 +658,33 @@ export default function ItemEditSheet({
             </div>
 
             <div className="mt-3 rounded-xl border border-clay-100 overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setQuickPicksOpen((o) => !o)}
-                className="w-full flex items-center justify-between px-3 py-2 bg-cream-50 text-left"
-              >
-                <span className="text-xs font-medium text-stone-600">
-                  Quick picks
-                </span>
-                <ChevronDown
-                  size={14}
-                  className={`text-stone-400 transition-transform ${
-                    quickPicksOpen ? "rotate-180" : ""
-                  }`}
-                />
-              </button>
+              <div className="w-full flex items-center justify-between px-3 py-2 bg-cream-50">
+                <button
+                  type="button"
+                  onClick={() => setQuickPicksOpen((o) => !o)}
+                  className="flex-1 flex items-center gap-2 text-left"
+                >
+                  <span className="text-xs font-medium text-stone-600">
+                    Quick picks
+                  </span>
+                  <ChevronDown
+                    size={14}
+                    className={`text-stone-400 transition-transform ${
+                      quickPicksOpen ? "rotate-180" : ""
+                    }`}
+                  />
+                </button>
+                {category === "top" || category === "dress" || category === "set" ? (
+                  <button
+                    type="button"
+                    onClick={() => setStyleGuideOpen(true)}
+                    className="flex items-center gap-1 text-[11px] text-emerald-700 font-medium shrink-0"
+                  >
+                    <ImageIcon size={12} />
+                    Style guide
+                  </button>
+                ) : null}
+              </div>
               {quickPicksOpen ? (
                 <div className="p-3 space-y-2.5 bg-white">
                   {renderSubcategoryQuickPicks(
@@ -1032,6 +1046,10 @@ export default function ItemEditSheet({
           )}
         </div>
       </div>
+
+      {styleGuideOpen ? (
+        <StyleGuideModal onClose={() => setStyleGuideOpen(false)} />
+      ) : null}
     </div>
   );
 }

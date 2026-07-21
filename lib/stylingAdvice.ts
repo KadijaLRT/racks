@@ -28,7 +28,7 @@ const BRA_RULES: Array<{ keywords: string[]; style: string; bra: string }> = [
   { keywords: ["spaghetti strap", "cami", "camisole"], style: "spaghetti strap top", bra: "a t-shirt bra or lightly lined bra, for delicate straps and light support" },
   { keywords: ["strapless", "tube top", "bandeau"], style: "strapless top", bra: "a strapless bra or bandeau bra, for a secure fit without visible straps" },
   { keywords: ["halter"], style: "halter top", bra: "a stick-on or adhesive bra, for support without showing straps" },
-  { keywords: ["backless", "open back", "low back"], style: "backless top", bra: "a stick-on or backless bra, for a backless look with support and lift" },
+  { keywords: ["backless", "open back", "low back", "caged back", "low v-back", "cross-back", "lace-up back"], style: "backless, caged, or low-back top", bra: "a stick-on or backless bra, for a backless look with support and lift" },
   { keywords: ["off-shoulder", "off shoulder", "off-the-shoulder", "cold shoulder", "cold-shoulder"], style: "off-shoulder top", bra: "a strapless or multiway bra, for support without showing straps" },
   { keywords: ["plunge", "plunging", "deep v", "deep neck"], style: "plunge neckline top", bra: "a plunge bra or low-cut bra, for a low neckline with the right support" },
   { keywords: ["t-shirt", "tee", "crewneck", "crew neck"], style: "t-shirt", bra: "a t-shirt bra or seamless bra, for a smooth silhouette under fitted fabric" },

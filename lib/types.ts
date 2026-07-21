@@ -360,6 +360,30 @@ export const MAKEUP_FINISH_OPTIONS = [
   "Full Coverage",
 ];
 
+// Universal pattern quick-picks, shown alongside Color across the same
+// categories (bottoms, tops/dresses/sets, outerwear, shoes,
+// accessories). "Solid" is listed first since it's the most common
+// case and worth a one-tap answer rather than implying every item
+// must have a pattern.
+export const PATTERN_OPTIONS = [
+  "Solid",
+  "Striped",
+  "Plaid",
+  "Gingham",
+  "Houndstooth",
+  "Herringbone",
+  "Argyle",
+  "Polka Dot",
+  "Floral",
+  "Paisley",
+  "Animal Print",
+  "Camo",
+  "Tie-Dye",
+  "Geometric",
+  "Color Block",
+  "Checkered",
+];
+
 // Curated color quick-picks, universal across categories. Deliberately
 // the same vocabulary as the gold/silver jewelry-pairing lists in
 // lib/stylingAdvice.ts (not a coincidence): picking "Emerald" or "Blush"

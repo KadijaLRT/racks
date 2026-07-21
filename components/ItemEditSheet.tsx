@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { X, Pin, PinOff, Trash2, Plus, Shuffle, Camera, Loader2, ChevronDown, Sparkles, Image as ImageIcon } from "lucide-react";
 import type { ClosetItem, ItemCategory } from "@/lib/types";
-import { JEAN_CUT_OPTIONS, RISE_HEIGHT_OPTIONS, SKIRT_LENGTH_OPTIONS, SHORTS_LENGTH_OPTIONS, NECKLINE_OPTIONS, TOP_SILHOUETTE_OPTIONS, SLEEVE_LENGTH_OPTIONS, SLEEVE_OPTIONS, BACK_STYLE_OPTIONS, SUBCATEGORY_SUGGESTIONS, COLOR_OPTIONS, WASH_OPTIONS, OUTERWEAR_CLOSURE_OPTIONS, OUTERWEAR_LENGTH_OPTIONS, SHOE_HEEL_OPTIONS, SHOE_TOE_OPTIONS, ACCESSORY_MATERIAL_OPTIONS, MAKEUP_FINISH_OPTIONS, MAKEUP_TYPE_OPTIONS, makeupShadeOptionsForType, KNIT_TYPE_OPTIONS, HOOD_STYLE_OPTIONS, HOOD_POCKET_OPTIONS, SWEATSUIT_FABRIC_OPTIONS, SWEATSUIT_FIT_OPTIONS } from "@/lib/types";
+import { JEAN_CUT_OPTIONS, RISE_HEIGHT_OPTIONS, SKIRT_LENGTH_OPTIONS, SHORTS_LENGTH_OPTIONS, NECKLINE_OPTIONS, TOP_SILHOUETTE_OPTIONS, SLEEVE_LENGTH_OPTIONS, SLEEVE_OPTIONS, BACK_STYLE_OPTIONS, SUBCATEGORY_SUGGESTIONS, COLOR_OPTIONS, PATTERN_OPTIONS, WASH_OPTIONS, OUTERWEAR_CLOSURE_OPTIONS, OUTERWEAR_LENGTH_OPTIONS, SHOE_HEEL_OPTIONS, SHOE_TOE_OPTIONS, ACCESSORY_MATERIAL_OPTIONS, MAKEUP_FINISH_OPTIONS, MAKEUP_TYPE_OPTIONS, makeupShadeOptionsForType, KNIT_TYPE_OPTIONS, HOOD_STYLE_OPTIONS, HOOD_POCKET_OPTIONS, SWEATSUIT_FABRIC_OPTIONS, SWEATSUIT_FIT_OPTIONS } from "@/lib/types";
 import { CATEGORIES, categoryLabel } from "@/lib/categories";
 import { fileToResizedDataUrl } from "@/lib/image";
 import StylingTipList from "@/components/StylingTipList";
@@ -692,9 +692,14 @@ export default function ItemEditSheet({
                   )}
                   {category === "bottom" ? (
                     <>
-                      {renderQuickPickRow("Fit", "fit", JEAN_CUT_OPTIONS)}
+                      {!subcategory.toLowerCase().includes("short") &&
+                      !subcategory.toLowerCase().includes("skort") &&
+                      !subcategory.toLowerCase().includes("skirt")
+                        ? renderQuickPickRow("Fit", "fit", JEAN_CUT_OPTIONS)
+                        : null}
                       {renderQuickPickRow("Rise", "rise", RISE_HEIGHT_OPTIONS)}
                       {renderQuickPickRow("Color", "color", COLOR_OPTIONS)}
+                      {renderQuickPickRow("Pattern", "pattern", PATTERN_OPTIONS)}
                       {subcategory.toLowerCase().includes("jean") ||
                       parseQuickPickValues(tags?.color)
                         .some((c) => c.toLowerCase().includes("denim"))
@@ -711,6 +716,7 @@ export default function ItemEditSheet({
                   {category === "top" || category === "dress" || category === "set" ? (
                     <>
                       {renderQuickPickRow("Color", "color", COLOR_OPTIONS)}
+                      {renderQuickPickRow("Pattern", "pattern", PATTERN_OPTIONS)}
                       {renderQuickPickRow("Neckline", "neckline", NECKLINE_OPTIONS)}
                       {renderQuickPickRow(
                         "Silhouette",
@@ -767,6 +773,7 @@ export default function ItemEditSheet({
                   {category === "outerwear" ? (
                     <>
                       {renderQuickPickRow("Color", "color", COLOR_OPTIONS)}
+                      {renderQuickPickRow("Pattern", "pattern", PATTERN_OPTIONS)}
                       {renderQuickPickRow(
                         "Closure",
                         "closure",
@@ -782,6 +789,7 @@ export default function ItemEditSheet({
                   {category === "shoes" ? (
                     <>
                       {renderQuickPickRow("Color", "color", COLOR_OPTIONS)}
+                      {renderQuickPickRow("Pattern", "pattern", PATTERN_OPTIONS)}
                       {renderQuickPickRow(
                         "Heel Height",
                         "heelHeight",
@@ -793,6 +801,7 @@ export default function ItemEditSheet({
                   {category === "accessory" ? (
                     <>
                       {renderQuickPickRow("Color", "color", COLOR_OPTIONS)}
+                      {renderQuickPickRow("Pattern", "pattern", PATTERN_OPTIONS)}
                       {renderQuickPickRow(
                         "Material",
                         "material",

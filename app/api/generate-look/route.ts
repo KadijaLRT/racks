@@ -77,6 +77,16 @@ export async function POST(req: NextRequest) {
     );
     const ownedMakeup = items.filter((i) => i?.category === "makeup");
 
+    if (wearable.length === 0) {
+      return NextResponse.json(
+        {
+          error:
+            "None of your catalogued items are marked clean right now, everything is dirty or at the dry cleaner. Mark something as clean in your closet to generate a look.",
+        },
+        { status: 400 }
+      );
+    }
+
     // Every string field pulled from closet items is sanitized before
     // being interpolated into the prompt sent to Groq.
     const closetList = wearable

@@ -115,14 +115,27 @@ export const TOP_SILHOUETTE_OPTIONS = [
 ];
 
 export const SLEEVE_OPTIONS = [
+  "Sleeveless",
   "Cap Sleeve",
+  "Short Sleeve",
+  "Elbow-Length",
+  "Three-Quarter Sleeve",
+  "Long Sleeve",
   "Dolman",
   "Raglan",
   "Kimono Sleeve",
   "Puff / Juliet",
+  "Balloon Sleeve",
+  "Lantern Sleeve",
   "Bishop",
   "Bell Sleeve",
+  "Trumpet Sleeve",
+  "Flutter Sleeve",
+  "Petal Sleeve",
   "Butterfly",
+  "Leg-of-Mutton",
+  "Peasant Sleeve",
+  "Cape Sleeve",
   "Cold-Shoulder",
 ];
 
@@ -131,6 +144,71 @@ export const BACK_STYLE_OPTIONS = [
   "Backless / Open-Back",
   "Keyhole Back",
   "Side Cut-Out",
+];
+
+// Outerwear-specific quick-picks.
+export const OUTERWEAR_CLOSURE_OPTIONS = [
+  "Zip",
+  "Button",
+  "Snap",
+  "Belted",
+  "Open Front",
+  "Toggle",
+];
+
+export const OUTERWEAR_LENGTH_OPTIONS = [
+  "Cropped",
+  "Hip-Length",
+  "Knee-Length",
+  "Longline",
+];
+
+// Shoe-specific quick-picks.
+export const SHOE_HEEL_OPTIONS = [
+  "Flat",
+  "Low Heel",
+  "Mid Heel",
+  "High Heel",
+  "Platform",
+  "Wedge",
+  "Block Heel",
+  "Stiletto",
+];
+
+export const SHOE_TOE_OPTIONS = [
+  "Round Toe",
+  "Pointed Toe",
+  "Square Toe",
+  "Open Toe",
+  "Peep Toe",
+  "Almond Toe",
+];
+
+// Accessory-specific quick-picks (bags, jewelry, belts, scarves, hats,
+// sunglasses all fall under one broad "material" vocabulary).
+export const ACCESSORY_MATERIAL_OPTIONS = [
+  "Leather",
+  "Faux Leather",
+  "Canvas",
+  "Suede",
+  "Metal",
+  "Gold-Tone",
+  "Silver-Tone",
+  "Fabric",
+  "Straw",
+  "Wood",
+  "Beaded",
+  "Pearl",
+];
+
+// Makeup-specific quick-picks.
+export const MAKEUP_FINISH_OPTIONS = [
+  "Matte",
+  "Satin",
+  "Dewy",
+  "Shimmer",
+  "Sheer",
+  "Full Coverage",
 ];
 
 // Curated color quick-picks, universal across categories. Deliberately

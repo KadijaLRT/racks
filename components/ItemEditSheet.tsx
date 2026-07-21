@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { X, Pin, PinOff, Trash2, Plus, Shuffle, Camera, Loader2, ChevronDown } from "lucide-react";
 import type { ClosetItem, ItemCategory } from "@/lib/types";
-import { JEAN_CUT_OPTIONS, RISE_HEIGHT_OPTIONS, NECKLINE_OPTIONS, TOP_SILHOUETTE_OPTIONS, SLEEVE_OPTIONS, BACK_STYLE_OPTIONS, SUBCATEGORY_SUGGESTIONS, COLOR_OPTIONS, WASH_OPTIONS } from "@/lib/types";
+import { JEAN_CUT_OPTIONS, RISE_HEIGHT_OPTIONS, NECKLINE_OPTIONS, TOP_SILHOUETTE_OPTIONS, SLEEVE_OPTIONS, BACK_STYLE_OPTIONS, SUBCATEGORY_SUGGESTIONS, COLOR_OPTIONS, WASH_OPTIONS, OUTERWEAR_CLOSURE_OPTIONS, OUTERWEAR_LENGTH_OPTIONS, SHOE_HEEL_OPTIONS, SHOE_TOE_OPTIONS, ACCESSORY_MATERIAL_OPTIONS, MAKEUP_FINISH_OPTIONS } from "@/lib/types";
 import { CATEGORIES, categoryLabel } from "@/lib/categories";
 import { fileToResizedDataUrl } from "@/lib/image";
 import StylingTipList from "@/components/StylingTipList";
@@ -513,64 +513,105 @@ export default function ItemEditSheet({
               )}
             </div>
 
-            {category === "bottom" ||
-            category === "top" ||
-            category === "dress" ||
-            category === "set" ? (
-              <div className="mt-3 rounded-xl border border-clay-100 overflow-hidden">
-                <button
-                  type="button"
-                  onClick={() => setQuickPicksOpen((o) => !o)}
-                  className="w-full flex items-center justify-between px-3 py-2 bg-cream-50 text-left"
-                >
-                  <span className="text-xs font-medium text-stone-600">
-                    Quick picks
-                  </span>
-                  <ChevronDown
-                    size={14}
-                    className={`text-stone-400 transition-transform ${
-                      quickPicksOpen ? "rotate-180" : ""
-                    }`}
-                  />
-                </button>
-                {quickPicksOpen ? (
-                  <div className="p-3 space-y-2.5 bg-white">
-                    {renderSubcategoryQuickPicks(
-                      SUBCATEGORY_SUGGESTIONS[category] || []
-                    )}
-                    {category === "bottom" ? (
-                      <>
-                        {renderQuickPickRow("Fit", "fit", JEAN_CUT_OPTIONS)}
-                        {renderQuickPickRow("Rise", "rise", RISE_HEIGHT_OPTIONS)}
-                        {renderQuickPickRow("Color", "color", COLOR_OPTIONS)}
-                        {subcategory.toLowerCase().includes("jean") ||
-                        parseQuickPickValues(tags?.color)
-                          .some((c) => c.toLowerCase().includes("denim"))
-                          ? renderQuickPickRow("Wash", "wash", WASH_OPTIONS)
-                          : null}
-                      </>
-                    ) : null}
-                    {category === "top" || category === "dress" || category === "set" ? (
-                      <>
-                        {renderQuickPickRow("Color", "color", COLOR_OPTIONS)}
-                        {renderQuickPickRow("Neckline", "neckline", NECKLINE_OPTIONS)}
-                        {renderQuickPickRow(
-                          "Silhouette",
-                          "silhouette",
-                          TOP_SILHOUETTE_OPTIONS
-                        )}
-                        {renderQuickPickRow("Sleeve", "sleeve", SLEEVE_OPTIONS)}
-                        {renderQuickPickRow(
-                          "Back style",
-                          "backStyle",
-                          BACK_STYLE_OPTIONS
-                        )}
-                      </>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
+            <div className="mt-3 rounded-xl border border-clay-100 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setQuickPicksOpen((o) => !o)}
+                className="w-full flex items-center justify-between px-3 py-2 bg-cream-50 text-left"
+              >
+                <span className="text-xs font-medium text-stone-600">
+                  Quick picks
+                </span>
+                <ChevronDown
+                  size={14}
+                  className={`text-stone-400 transition-transform ${
+                    quickPicksOpen ? "rotate-180" : ""
+                  }`}
+                />
+              </button>
+              {quickPicksOpen ? (
+                <div className="p-3 space-y-2.5 bg-white">
+                  {renderSubcategoryQuickPicks(
+                    SUBCATEGORY_SUGGESTIONS[category] || []
+                  )}
+                  {category === "bottom" ? (
+                    <>
+                      {renderQuickPickRow("Fit", "fit", JEAN_CUT_OPTIONS)}
+                      {renderQuickPickRow("Rise", "rise", RISE_HEIGHT_OPTIONS)}
+                      {renderQuickPickRow("Color", "color", COLOR_OPTIONS)}
+                      {subcategory.toLowerCase().includes("jean") ||
+                      parseQuickPickValues(tags?.color)
+                        .some((c) => c.toLowerCase().includes("denim"))
+                        ? renderQuickPickRow("Wash", "wash", WASH_OPTIONS)
+                        : null}
+                    </>
+                  ) : null}
+                  {category === "top" || category === "dress" || category === "set" ? (
+                    <>
+                      {renderQuickPickRow("Color", "color", COLOR_OPTIONS)}
+                      {renderQuickPickRow("Neckline", "neckline", NECKLINE_OPTIONS)}
+                      {renderQuickPickRow(
+                        "Silhouette",
+                        "silhouette",
+                        TOP_SILHOUETTE_OPTIONS
+                      )}
+                      {renderQuickPickRow("Sleeve", "sleeve", SLEEVE_OPTIONS)}
+                      {renderQuickPickRow(
+                        "Back style",
+                        "backStyle",
+                        BACK_STYLE_OPTIONS
+                      )}
+                    </>
+                  ) : null}
+                  {category === "outerwear" ? (
+                    <>
+                      {renderQuickPickRow("Color", "color", COLOR_OPTIONS)}
+                      {renderQuickPickRow(
+                        "Closure",
+                        "closure",
+                        OUTERWEAR_CLOSURE_OPTIONS
+                      )}
+                      {renderQuickPickRow(
+                        "Length",
+                        "length",
+                        OUTERWEAR_LENGTH_OPTIONS
+                      )}
+                    </>
+                  ) : null}
+                  {category === "shoes" ? (
+                    <>
+                      {renderQuickPickRow("Color", "color", COLOR_OPTIONS)}
+                      {renderQuickPickRow(
+                        "Heel Height",
+                        "heelHeight",
+                        SHOE_HEEL_OPTIONS
+                      )}
+                      {renderQuickPickRow("Toe Shape", "toeShape", SHOE_TOE_OPTIONS)}
+                    </>
+                  ) : null}
+                  {category === "accessory" ? (
+                    <>
+                      {renderQuickPickRow("Color", "color", COLOR_OPTIONS)}
+                      {renderQuickPickRow(
+                        "Material",
+                        "material",
+                        ACCESSORY_MATERIAL_OPTIONS
+                      )}
+                    </>
+                  ) : null}
+                  {category === "makeup" ? (
+                    <>
+                      {renderQuickPickRow("Color", "color", COLOR_OPTIONS)}
+                      {renderQuickPickRow(
+                        "Finish",
+                        "finish",
+                        MAKEUP_FINISH_OPTIONS
+                      )}
+                    </>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
 
             <div className="flex gap-2 mt-2">
               <input

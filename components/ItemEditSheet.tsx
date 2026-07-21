@@ -4,6 +4,12 @@ import { useState } from "react";
 import { X, Pin, PinOff, Trash2, Plus, Shuffle } from "lucide-react";
 import type { ClosetItem, ItemCategory } from "@/lib/types";
 import { CATEGORIES, categoryLabel } from "@/lib/categories";
+import StylingTipList from "@/components/StylingTipList";
+import {
+  braRecommendation,
+  necklaceRecommendation,
+  jewelryToneRecommendation,
+} from "@/lib/stylingAdvice";
 
 interface ItemEditSheetProps {
   item: ClosetItem;
@@ -201,6 +207,16 @@ export default function ItemEditSheet({
               </button>
             </div>
           </div>
+
+          {category === "top" || category === "dress" || category === "set" ? (
+            <StylingTipList
+              tips={[
+                braRecommendation({ subcategory, name, tags }),
+                necklaceRecommendation({ subcategory, name, tags }),
+                jewelryToneRecommendation({ name, tags }),
+              ]}
+            />
+          ) : null}
 
           <div className="flex flex-col md:flex-row gap-3">
             <div className="flex-1">

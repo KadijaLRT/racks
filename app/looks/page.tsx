@@ -5,6 +5,12 @@ import { Loader2, Heart, Check, Sparkles, HelpCircle, BookMarked, Trash2 } from 
 import BottomNav from "@/components/BottomNav";
 import OutfitItemStrip from "@/components/OutfitItemStrip";
 import HairstylePreview from "@/components/HairstylePreview";
+import StylingTipList from "@/components/StylingTipList";
+import {
+  braRecommendation,
+  necklaceRecommendation,
+  jewelryToneRecommendation,
+} from "@/lib/stylingAdvice";
 import {
   closetStore,
   wigStore,
@@ -295,6 +301,24 @@ export default function LooksPage() {
             </div>
 
             <OutfitItemStrip itemIds={result.itemIds} items={closetItems} />
+
+            {(() => {
+              const outfitTopItem = closetItems.find(
+                (i) =>
+                  result.itemIds.includes(i.id) &&
+                  (i.category === "top" || i.category === "dress" || i.category === "set")
+              );
+              if (!outfitTopItem) return null;
+              return (
+                <StylingTipList
+                  tips={[
+                    braRecommendation(outfitTopItem),
+                    necklaceRecommendation(outfitTopItem),
+                    jewelryToneRecommendation(outfitTopItem),
+                  ]}
+                />
+              );
+            })()}
 
             <p className="text-sm text-stone-600">{result.reasoning}</p>
 

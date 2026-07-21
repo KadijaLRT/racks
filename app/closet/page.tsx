@@ -25,7 +25,7 @@ export default function ClosetPage() {
   const [addPickerOpen, setAddPickerOpen] = useState(false);
   const [bulkScreenshot, setBulkScreenshot] = useState<string | null>(null);
   const [bulkProcessing, setBulkProcessing] = useState(false);
-  const [addedToast, setAddedToast] = useState<{ name: string; key: number } | null>(null);
+  const [addedToast, setAddedToast] = useState<{ message: string; key: number } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const bulkFileRef = useRef<HTMLInputElement>(null);
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -38,9 +38,9 @@ export default function ClosetPage() {
     };
   }, []);
 
-  function showAddedToast(name: string) {
+  function showAddedToast(message: string) {
     if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
-    setAddedToast({ name, key: Date.now() });
+    setAddedToast({ message, key: Date.now() });
     toastTimeoutRef.current = setTimeout(() => setAddedToast(null), 2600);
   }
 
@@ -82,6 +82,7 @@ export default function ClosetPage() {
       let name = "Untitled item";
       let subcategory = "";
       let tags: Record<string, string> = {};
+      let taggingFailed = false;
 
       try {
         const res = await fetch("/api/tag-item", {
@@ -94,10 +95,16 @@ export default function ClosetPage() {
           name = tagged?.name || name;
           subcategory = tagged?.subcategory || "";
           tags = tagged?.tags || {};
+        } else {
+          taggingFailed = true;
         }
       } catch {
         // AI tagging is a nice-to-have, not a blocker: the item still
-        // saves untagged so the user can fill it in manually.
+        // saves untagged so the user can fill it in manually. Still
+        // worth telling the person why, rather than a silent
+        // "Untitled item" with no explanation (e.g. Groq's per-minute
+        // rate limit hit after several uploads in a row).
+        taggingFailed = true;
       }
 
       const saved = await closetStore.create({
@@ -110,7 +117,11 @@ export default function ClosetPage() {
         timesWorn: 0,
       });
       setItems((prev) => [saved, ...(prev || [])]);
-      showAddedToast(saved?.name || name);
+      if (taggingFailed) {
+        showAddedToast("Saved, but auto-tagging failed, edit to add a name");
+      } else {
+        showAddedToast(`Added \u201c${saved?.name || name}\u201d`);
+      }
     } catch (err) {
       setUploadError(
         err instanceof Error ? err.message : "That photo couldn't be added."
@@ -257,7 +268,7 @@ export default function ClosetPage() {
           key={addedToast.key}
           className="fixed bottom-24 left-1/2 z-30 max-w-[85%] rounded-full bg-stone-800/95 text-cream text-xs font-medium px-4 py-2 shadow-lg animate-toast-fade pointer-events-none"
         >
-          Added &ldquo;{addedToast.name}&rdquo;
+          {addedToast.message}
         </div>
       ) : null}
 

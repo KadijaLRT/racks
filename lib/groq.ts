@@ -61,6 +61,21 @@ export function buildImageMessage(text: string, imageDataUrl: string): ChatMessa
   };
 }
 
+function formatRateLimitMessage(retryAfterSec: number): string {
+  if (retryAfterSec <= 90) {
+    const seconds = Math.ceil(retryAfterSec);
+    return `Groq's rate limit was hit from too many recent AI requests. Wait about ${seconds}s and try again.`;
+  }
+  if (retryAfterSec <= 60 * 60) {
+    const minutes = Math.ceil(retryAfterSec / 60);
+    return `Groq's rate limit was hit. This looks like a longer cooldown (about ${minutes} minutes), likely a daily request or usage cap rather than a brief burst, so retrying immediately won't help.`;
+  }
+  const hours = Math.ceil(retryAfterSec / 3600);
+  return `Groq's daily usage limit was hit. It won't reset for about ${hours} hour${
+    hours === 1 ? "" : "s"
+  }, this is a per-day cap on the free tier, not something that clears by spacing requests out. Check console.groq.com/settings/limits or consider a paid tier if this happens often.`;
+}
+
 async function callGroq(
   messages: ChatMessage[],
   opts: GroqCallOptions,
@@ -107,6 +122,51 @@ export async function groqChat(
     text.includes("json_validate_failed") || text.includes("failed_generation");
 
   let res = await callGroq(messages, opts, apiKey);
+
+  // Groq's free tier caps requests per minute; a burst of uploads (bulk
+  // import, or several quick single-item adds) can exceed that within a
+  // rolling 60s window. Groq returns 429 with a retry-after header in
+  // that case, distinct from a json_validate_failed content problem, so
+  // it needs its own backoff-and-retry path rather than falling through
+  // to the generic error below (which previously left every item after
+  // the limit silently untagged with no explanation).
+  // Groq enforces limits on multiple windows at once (requests/minute,
+  // tokens/minute, and also requests/day and tokens/day on the free
+  // tier). A 429 can mean either: a short per-minute window (worth a
+  // quick inline retry) or a per-day cap (which won't clear for hours,
+  // so retrying at all is pointless and misleading). Groq's own
+  // retry-after header tells us which: seconds means the former, tens
+  // of minutes or hours means the latter. We trust that value instead
+  // of guessing "wait a minute" for every 429.
+  let rateLimitAttempt = 0;
+  while (res.status === 429 && rateLimitAttempt < 2) {
+    const retryAfterHeader = res.headers.get("retry-after");
+    const retryAfterSec = retryAfterHeader ? parseFloat(retryAfterHeader) : NaN;
+
+    if (Number.isFinite(retryAfterSec) && retryAfterSec > 15) {
+      // A long wait means a per-day cap, not a per-minute burst.
+      // Retrying won't help within this request, so fail fast with the
+      // real wait time rather than looping.
+      throw new Error(formatRateLimitMessage(retryAfterSec));
+    }
+
+    const waitMs = Number.isFinite(retryAfterSec) && retryAfterSec > 0
+      ? retryAfterSec * 1000
+      : 4000;
+    await new Promise((resolve) => setTimeout(resolve, waitMs));
+    rateLimitAttempt += 1;
+    res = await callGroq(messages, opts, apiKey);
+  }
+
+  if (res.status === 429) {
+    const retryAfterHeader = res.headers.get("retry-after");
+    const retryAfterSec = retryAfterHeader ? parseFloat(retryAfterHeader) : NaN;
+    throw new Error(
+      Number.isFinite(retryAfterSec)
+        ? formatRateLimitMessage(retryAfterSec)
+        : "Groq's rate limit was hit from too many recent AI requests. Wait a bit and try tagging this item again."
+    );
+  }
 
   // A transient generation hiccup (empty failed_generation / strict JSON
   // mode validation failure) usually self-heals with a retry at a

@@ -37,6 +37,7 @@ export default function ItemEditSheet({
   onRemix,
 }: ItemEditSheetProps) {
   const [name, setName] = useState(item?.name || "");
+  const [image, setImage] = useState(item?.image || "");
   const [category, setCategory] = useState<ItemCategory>(item?.category || "top");
   const [subcategory, setSubcategory] = useState(item?.subcategory || "");
   const [tags, setTags] = useState<Record<string, string>>(item?.tags || {});
@@ -55,6 +56,54 @@ export default function ItemEditSheet({
   const [analyzingBack, setAnalyzingBack] = useState(false);
   const [backError, setBackError] = useState("");
   const backFileRef = useRef<HTMLInputElement>(null);
+  const [changingFront, setChangingFront] = useState(false);
+  const [frontError, setFrontError] = useState("");
+  const [frontRetagged, setFrontRetagged] = useState(false);
+  const frontFileRef = useRef<HTMLInputElement>(null);
+
+  async function handleFrontPhoto(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    setFrontError("");
+    setFrontRetagged(false);
+    setChangingFront(true);
+    try {
+      const dataUrl = await fileToResizedDataUrl(file);
+      if (!dataUrl) throw new Error("Couldn't read that photo.");
+      setImage(dataUrl);
+
+      // Re-run AI tagging on the new photo, the same way the initial add
+      // flow does, since a changed photo means the old name/tags may no
+      // longer describe what's actually in the picture. Non-blocking:
+      // the new photo still saves even if this call fails.
+      try {
+        const res = await fetch("/api/tag-item", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ image: dataUrl, category }),
+        });
+        const result = await res.json().catch(() => ({}));
+        if (!result?.error) {
+          if (result?.name) setName(result.name);
+          if (result?.subcategory) setSubcategory(result.subcategory);
+          if (result?.tags && typeof result.tags === "object") {
+            setTags(result.tags);
+          }
+          setFrontRetagged(true);
+        }
+      } catch {
+        // Non-blocking, see comment above.
+      }
+    } catch (err) {
+      setFrontError(
+        err instanceof Error ? err.message : "That photo couldn't be added."
+      );
+    } finally {
+      setChangingFront(false);
+    }
+  }
 
   async function handleBackPhoto(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -108,6 +157,7 @@ export default function ItemEditSheet({
       laundryStatus,
       closetStatus,
       pinned,
+      image: image || item.image,
       backImage: backImage || undefined,
     });
   }
@@ -160,6 +210,13 @@ export default function ItemEditSheet({
 
         <div className="overflow-y-auto px-5 py-4 space-y-5 flex-1">
           <input
+            ref={frontFileRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleFrontPhoto}
+          />
+          <input
             ref={backFileRef}
             type="file"
             accept="image/*"
@@ -169,16 +226,32 @@ export default function ItemEditSheet({
 
           <div className="flex flex-col md:flex-row gap-4">
             <div className="flex gap-2 shrink-0">
-              <div className="w-full md:w-40 aspect-[3/4] rounded-2xl overflow-hidden bg-cream-100 shrink-0">
-                {item?.image ? (
+              <button
+                onClick={() => frontFileRef.current?.click()}
+                disabled={changingFront}
+                aria-label="Change photo"
+                className="relative w-full md:w-40 aspect-[3/4] rounded-2xl overflow-hidden bg-cream-100 shrink-0 group disabled:opacity-80"
+              >
+                {image ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={item.image}
+                    src={image}
                     alt={name || "Closet item"}
                     className="w-full h-full object-cover"
                   />
                 ) : null}
-              </div>
+                <div className="absolute inset-0 bg-black/0 md:group-hover:bg-black/20 md:transition-colors" />
+                {changingFront ? (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                    <Loader2 size={20} className="text-white animate-spin" />
+                  </div>
+                ) : (
+                  <span className="absolute bottom-1.5 right-1.5 flex items-center gap-1 bg-black/60 text-cream text-[10px] px-2 py-1 rounded-full">
+                    <Camera size={11} />
+                    Change
+                  </span>
+                )}
+              </button>
 
               <div className="w-20 md:w-24 aspect-[3/4] rounded-2xl overflow-hidden bg-cream-100 shrink-0 relative">
                 {backImage ? (
@@ -302,6 +375,15 @@ export default function ItemEditSheet({
               </button>
             </div>
           </div>
+
+          {frontError ? (
+            <p className="text-xs text-clay-700 -mt-3">{frontError}</p>
+          ) : null}
+          {frontRetagged && !frontError ? (
+            <p className="text-xs text-emerald-700 -mt-3">
+              Re-analyzed the new photo, details below were updated.
+            </p>
+          ) : null}
 
           {backError ? (
             <p className="text-xs text-clay-700 -mt-3">{backError}</p>

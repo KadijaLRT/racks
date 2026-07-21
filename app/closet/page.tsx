@@ -25,7 +25,11 @@ export default function ClosetPage() {
   const [addPickerOpen, setAddPickerOpen] = useState(false);
   const [bulkScreenshot, setBulkScreenshot] = useState<string | null>(null);
   const [bulkProcessing, setBulkProcessing] = useState(false);
-  const [addedToast, setAddedToast] = useState<{ message: string; key: number } | null>(null);
+  const [addedToast, setAddedToast] = useState<{
+    message: string;
+    key: number;
+    isError?: boolean;
+  } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const bulkFileRef = useRef<HTMLInputElement>(null);
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -38,10 +42,13 @@ export default function ClosetPage() {
     };
   }, []);
 
-  function showAddedToast(message: string) {
+  function showAddedToast(message: string, isError = false) {
     if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
-    setAddedToast({ message, key: Date.now() });
-    toastTimeoutRef.current = setTimeout(() => setAddedToast(null), 2600);
+    setAddedToast({ message, key: Date.now(), isError });
+    toastTimeoutRef.current = setTimeout(
+      () => setAddedToast(null),
+      isError ? 5000 : 2600
+    );
   }
 
   useEffect(() => {
@@ -82,7 +89,7 @@ export default function ClosetPage() {
       let name = "Untitled item";
       let subcategory = "";
       let tags: Record<string, string> = {};
-      let taggingFailed = false;
+      let taggingFailReason = "";
 
       try {
         const res = await fetch("/api/tag-item", {
@@ -96,7 +103,8 @@ export default function ClosetPage() {
           subcategory = tagged?.subcategory || "";
           tags = tagged?.tags || {};
         } else {
-          taggingFailed = true;
+          taggingFailReason =
+            typeof tagged.error === "string" ? tagged.error : "Auto-tagging failed";
         }
       } catch {
         // AI tagging is a nice-to-have, not a blocker: the item still
@@ -104,7 +112,7 @@ export default function ClosetPage() {
         // worth telling the person why, rather than a silent
         // "Untitled item" with no explanation (e.g. Groq's per-minute
         // rate limit hit after several uploads in a row).
-        taggingFailed = true;
+        taggingFailReason = "Couldn't reach the tagging service";
       }
 
       const saved = await closetStore.create({
@@ -117,8 +125,8 @@ export default function ClosetPage() {
         timesWorn: 0,
       });
       setItems((prev) => [saved, ...(prev || [])]);
-      if (taggingFailed) {
-        showAddedToast("Saved, but auto-tagging failed, edit to add a name");
+      if (taggingFailReason) {
+        showAddedToast(`Saved untagged: ${taggingFailReason}`, true);
       } else {
         showAddedToast(`Added \u201c${saved?.name || name}\u201d`);
       }
@@ -266,7 +274,11 @@ export default function ClosetPage() {
       {addedToast ? (
         <div
           key={addedToast.key}
-          className="fixed bottom-24 left-1/2 z-30 max-w-[85%] rounded-full bg-stone-800/95 text-cream text-xs font-medium px-4 py-2 shadow-lg animate-toast-fade pointer-events-none"
+          className={`fixed bottom-24 left-1/2 z-30 bg-stone-800/95 text-cream shadow-lg animate-toast-fade pointer-events-none ${
+            addedToast.isError
+              ? "max-w-[90%] w-80 rounded-2xl text-left text-xs px-4 py-3 leading-snug"
+              : "max-w-[85%] rounded-full text-xs font-medium px-4 py-2"
+          }`}
         >
           {addedToast.message}
         </div>

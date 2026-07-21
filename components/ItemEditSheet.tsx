@@ -211,23 +211,47 @@ export default function ItemEditSheet({
   // Toggle a quick-pick chip (e.g. fit: "Skinny") on/off under a fixed
   // key, so tapping it again clears the selection instead of stacking
   // duplicate values.
+  // Quick-pick chips support multi-select: a garment can be, say, both
+  // "Emerald" and "Gold" colored, or have both "Racerback" and a
+  // "Keyhole Back" detail. Since tags is a flat Record<string,string>,
+  // multiple picks under the same key are stored as one comma-joined
+  // string (e.g. tags.color = "Black, Emerald") rather than changing
+  // the data model. This stays compatible with the styling-tip matcher,
+  // which already scans all tag values as joined text for keywords, so
+  // a comma-joined value still matches each individual color/style word.
+  function parseQuickPickValues(raw: string | undefined): string[] {
+    return raw
+      ? raw
+          .split(",")
+          .map((v) => v.trim())
+          .filter(Boolean)
+      : [];
+  }
+
   function toggleQuickTag(key: string, value: string) {
     setTags((prev) => {
       const next = { ...(prev || {}) };
-      if (next[key] === value) {
+      const current = parseQuickPickValues(next[key]);
+      const isSelected = current.includes(value);
+      const updated = isSelected
+        ? current.filter((v) => v !== value)
+        : [...current, value];
+      if (updated.length === 0) {
         delete next[key];
       } else {
-        next[key] = value;
+        next[key] = updated.join(", ");
       }
       return next;
     });
   }
 
   // Renders one labeled row of tap-to-fill chips (e.g. "Fit", "Neckline")
-  // that write into a fixed tag key. Shared by bottoms (Fit, Rise) and
-  // tops/dresses/sets (Neckline, Silhouette, Sleeve, Back style) instead
-  // of duplicating the same chip-row markup five times over.
+  // that write into a fixed tag key, multiple chips can be selected at
+  // once. Shared by bottoms (Fit, Rise, Color, Wash) and tops/dresses/
+  // sets (Color, Neckline, Silhouette, Sleeve, Back style) instead of
+  // duplicating the same chip-row markup for each one.
   function renderQuickPickRow(label: string, tagKey: string, options: string[]) {
+    const selectedValues = parseQuickPickValues(tags?.[tagKey]);
     return (
       <div>
         <p className="text-[11px] text-stone-400 mb-1">{label}</p>
@@ -238,7 +262,7 @@ export default function ItemEditSheet({
               type="button"
               onClick={() => toggleQuickTag(tagKey, opt)}
               className={`px-2.5 py-1 rounded-full text-[11px] ${
-                tags?.[tagKey] === opt
+                selectedValues.includes(opt)
                   ? "bg-emerald-600 text-cream"
                   : "bg-cream-100 text-stone-500"
               }`}
@@ -519,7 +543,9 @@ export default function ItemEditSheet({
                         {renderQuickPickRow("Fit", "fit", JEAN_CUT_OPTIONS)}
                         {renderQuickPickRow("Rise", "rise", RISE_HEIGHT_OPTIONS)}
                         {renderQuickPickRow("Color", "color", COLOR_OPTIONS)}
-                        {subcategory.toLowerCase().includes("jean")
+                        {subcategory.toLowerCase().includes("jean") ||
+                        parseQuickPickValues(tags?.color)
+                          .some((c) => c.toLowerCase().includes("denim"))
                           ? renderQuickPickRow("Wash", "wash", WASH_OPTIONS)
                           : null}
                       </>

@@ -175,6 +175,7 @@ export const COLOR_OPTIONS = [
   "Sky Blue",
   "Cerulean",
   "Blue",
+  "Denim",
   "Denim Blue",
   "Navy",
   "Teal",

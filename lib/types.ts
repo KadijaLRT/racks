@@ -113,6 +113,7 @@ export const TOP_SILHOUETTE_OPTIONS = [
   "Camisole",
   "Tube / Strapless",
   "Smocked / Shirred",
+  "Ruched",
   "Bodysuit",
 ];
 

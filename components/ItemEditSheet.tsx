@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { X, Pin, PinOff, Trash2, Plus, Shuffle, Camera, Loader2, ChevronDown, Sparkles, Image as ImageIcon } from "lucide-react";
 import type { ClosetItem, ItemCategory } from "@/lib/types";
-import { JEAN_CUT_OPTIONS, RISE_HEIGHT_OPTIONS, SKIRT_LENGTH_OPTIONS, SHORTS_LENGTH_OPTIONS, NECKLINE_OPTIONS, TOP_SILHOUETTE_OPTIONS, SLEEVE_LENGTH_OPTIONS, SLEEVE_OPTIONS, BACK_STYLE_OPTIONS, SUBCATEGORY_SUGGESTIONS, COLOR_OPTIONS, PATTERN_OPTIONS, WASH_OPTIONS, OUTERWEAR_CLOSURE_OPTIONS, OUTERWEAR_LENGTH_OPTIONS, SHOE_HEEL_OPTIONS, SHOE_TOE_OPTIONS, ACCESSORY_MATERIAL_OPTIONS, MAKEUP_FINISH_OPTIONS, MAKEUP_TYPE_OPTIONS, makeupShadeOptionsForType, KNIT_TYPE_OPTIONS, HOOD_STYLE_OPTIONS, HOOD_POCKET_OPTIONS, SWEATSUIT_FABRIC_OPTIONS, SWEATSUIT_FIT_OPTIONS } from "@/lib/types";
+import { JEAN_CUT_OPTIONS, RISE_HEIGHT_OPTIONS, SKIRT_LENGTH_OPTIONS, SHORTS_LENGTH_OPTIONS, NECKLINE_OPTIONS, TOP_SILHOUETTE_OPTIONS, SLEEVE_LENGTH_OPTIONS, SLEEVE_OPTIONS, BACK_STYLE_OPTIONS, SUBCATEGORY_SUGGESTIONS, COLOR_OPTIONS, PATTERN_OPTIONS, WASH_OPTIONS, OUTERWEAR_CLOSURE_OPTIONS, OUTERWEAR_LENGTH_OPTIONS, SHOE_HEEL_OPTIONS, SHOE_TOE_OPTIONS, ACCESSORY_MATERIAL_OPTIONS, JEWELRY_TYPE_OPTIONS, HAT_TYPE_OPTIONS, MAKEUP_FINISH_OPTIONS, makeupTypeOptionsForSubcategory, makeupShadeOptionsForType, KNIT_TYPE_OPTIONS, HOOD_STYLE_OPTIONS, HOOD_POCKET_OPTIONS, SWEATSUIT_FABRIC_OPTIONS, SWEATSUIT_FIT_OPTIONS } from "@/lib/types";
 import { CATEGORIES, categoryLabel } from "@/lib/categories";
 import { fileToResizedDataUrl } from "@/lib/image";
 import StylingTipList from "@/components/StylingTipList";
@@ -800,6 +800,20 @@ export default function ItemEditSheet({
                   ) : null}
                   {category === "accessory" ? (
                     <>
+                      {subcategory.toLowerCase().includes("jewelry")
+                        ? renderQuickPickRow(
+                            "Jewelry Type",
+                            "jewelryType",
+                            JEWELRY_TYPE_OPTIONS
+                          )
+                        : null}
+                      {subcategory.toLowerCase().includes("hat")
+                        ? renderQuickPickRow(
+                            "Hat Type",
+                            "hatType",
+                            HAT_TYPE_OPTIONS
+                          )
+                        : null}
                       {renderQuickPickRow("Color", "color", COLOR_OPTIONS)}
                       {renderQuickPickRow("Pattern", "pattern", PATTERN_OPTIONS)}
                       {renderQuickPickRow(
@@ -814,7 +828,7 @@ export default function ItemEditSheet({
                       {renderQuickPickRow(
                         "Makeup type",
                         "makeupType",
-                        MAKEUP_TYPE_OPTIONS
+                        makeupTypeOptionsForSubcategory(subcategory)
                       )}
                       {(() => {
                         const selectedTypes = parseQuickPickValues(

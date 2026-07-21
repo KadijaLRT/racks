@@ -274,6 +274,37 @@ export const ACCESSORY_MATERIAL_OPTIONS = [
   "Pearl",
 ];
 
+// Shown only when the accessory subcategory is jewelry, since these
+// don't apply to bags, belts, scarves, hats, or sunglasses.
+export const JEWELRY_TYPE_OPTIONS = [
+  "Earrings",
+  "Necklace",
+  "Choker",
+  "Bracelet",
+  "Bangle",
+  "Ring",
+  "Anklet",
+  "Brooch",
+  "Body Chain",
+  "Hair Jewelry",
+];
+
+// Shown only when the accessory subcategory is a hat, since these
+// don't apply to bags, jewelry, belts, scarves, or sunglasses.
+export const HAT_TYPE_OPTIONS = [
+  "Baseball Cap",
+  "Beanie",
+  "Bucket Hat",
+  "Fedora",
+  "Wide Brim",
+  "Sun Hat",
+  "Beret",
+  "Newsboy Cap",
+  "Visor",
+  "Cowboy Hat",
+  "Panama Hat",
+];
+
 // Makeup-specific quick-picks. Unlike clothing, makeup shades aren't
 // meaningfully described by the universal COLOR_OPTIONS vocabulary
 // (nobody shops for a lipstick in "Emerald" or a foundation in "Navy"),
@@ -335,6 +366,28 @@ const MAKEUP_EYE_SHADES = [
   "Plum",
   "Green",
 ];
+
+// Maps the makeup subcategory (face/eyes/lips/cheeks) to the relevant
+// subset of MAKEUP_TYPE_OPTIONS, same pattern as jewelry/hat type only
+// showing once that subcategory is picked. If no subcategory is set
+// yet, returns the full list rather than hiding the row entirely, so
+// someone can still pick a type before bothering with subcategory.
+export function makeupTypeOptionsForSubcategory(subcategory: string): string[] {
+  const normalized = subcategory.toLowerCase();
+  if (normalized.includes("face")) {
+    return ["Foundation", "Concealer", "Powder", "Setting Spray"];
+  }
+  if (normalized.includes("eye")) {
+    return ["Eyeshadow", "Eyeliner", "Mascara", "Brow"];
+  }
+  if (normalized.includes("lip")) {
+    return ["Lipstick", "Lip Gloss", "Lip Liner"];
+  }
+  if (normalized.includes("cheek")) {
+    return ["Blush", "Bronzer", "Highlighter"];
+  }
+  return MAKEUP_TYPE_OPTIONS;
+}
 
 // Maps a selected makeup type to its relevant shade list. Types with no
 // meaningful shade concept (Setting Spray) map to an empty array, which

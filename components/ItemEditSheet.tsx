@@ -1,9 +1,9 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { X, Pin, PinOff, Trash2, Plus, Shuffle, Camera, Loader2, ChevronDown } from "lucide-react";
+import { X, Pin, PinOff, Trash2, Plus, Shuffle, Camera, Loader2, ChevronDown, Sparkles } from "lucide-react";
 import type { ClosetItem, ItemCategory } from "@/lib/types";
-import { JEAN_CUT_OPTIONS, RISE_HEIGHT_OPTIONS, NECKLINE_OPTIONS, TOP_SILHOUETTE_OPTIONS, SLEEVE_OPTIONS, BACK_STYLE_OPTIONS, SUBCATEGORY_SUGGESTIONS, COLOR_OPTIONS, WASH_OPTIONS, OUTERWEAR_CLOSURE_OPTIONS, OUTERWEAR_LENGTH_OPTIONS, SHOE_HEEL_OPTIONS, SHOE_TOE_OPTIONS, ACCESSORY_MATERIAL_OPTIONS, MAKEUP_FINISH_OPTIONS } from "@/lib/types";
+import { JEAN_CUT_OPTIONS, RISE_HEIGHT_OPTIONS, NECKLINE_OPTIONS, TOP_SILHOUETTE_OPTIONS, SLEEVE_LENGTH_OPTIONS, SLEEVE_OPTIONS, BACK_STYLE_OPTIONS, SUBCATEGORY_SUGGESTIONS, COLOR_OPTIONS, WASH_OPTIONS, OUTERWEAR_CLOSURE_OPTIONS, OUTERWEAR_LENGTH_OPTIONS, SHOE_HEEL_OPTIONS, SHOE_TOE_OPTIONS, ACCESSORY_MATERIAL_OPTIONS, MAKEUP_FINISH_OPTIONS, MAKEUP_TYPE_OPTIONS, makeupShadeOptionsForType } from "@/lib/types";
 import { CATEGORIES, categoryLabel } from "@/lib/categories";
 import { fileToResizedDataUrl } from "@/lib/image";
 import StylingTipList from "@/components/StylingTipList";
@@ -22,6 +22,39 @@ interface ItemEditSheetProps {
 }
 
 const LAUNDRY_OPTIONS: ClosetItem["laundryStatus"][] = ["clean", "dirty", "dry-clean"];
+
+// The underlying field stays laundryStatus/clean-dirty-dry-clean for
+// every category (generate-look's outfit-building filter depends on
+// laundryStatus === "clean" to decide what's available to wear,
+// including shoes), but the label and option wording only make literal
+// sense for actual clothing. Shoes and accessories get a relabeled
+// "Condition" framing with wording that fits them; makeup doesn't have
+// a meaningful readiness concept at all (it's already excluded from
+// the wearable filter regardless of this field), so it's hidden there.
+function getStatusFieldConfig(
+  category: ItemCategory
+): { label: string; optionLabels: Record<ClosetItem["laundryStatus"], string> } | null {
+  if (category === "shoes") {
+    return {
+      label: "Condition",
+      optionLabels: { clean: "Clean", dirty: "Needs cleaning", "dry-clean": "At the cobbler" },
+    };
+  }
+  if (category === "accessory") {
+    return {
+      label: "Condition",
+      optionLabels: { clean: "Good", dirty: "Needs cleaning", "dry-clean": "Needs repair" },
+    };
+  }
+  if (category === "makeup") {
+    return null;
+  }
+  return {
+    label: "Laundry status",
+    optionLabels: { clean: "Clean", dirty: "Dirty", "dry-clean": "Dry-clean" },
+  };
+}
+
 const CLOSET_STATUS_OPTIONS: NonNullable<ClosetItem["closetStatus"]>[] = [
   "keep",
   "donate",
@@ -74,6 +107,9 @@ export default function ItemEditSheet({
   const [frontError, setFrontError] = useState("");
   const [frontRetagged, setFrontRetagged] = useState(false);
   const frontFileRef = useRef<HTMLInputElement>(null);
+  const [retaggingItem, setRetaggingItem] = useState(false);
+  const [retagItemError, setRetagItemError] = useState("");
+  const [retagItemSuccess, setRetagItemSuccess] = useState(false);
 
   async function handleFrontPhoto(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -116,6 +152,43 @@ export default function ItemEditSheet({
       );
     } finally {
       setChangingFront(false);
+    }
+  }
+
+  // Re-tags this single item on demand using its already-stored photo,
+  // no new upload needed. Complements the bulk "Retag now" banner on
+  // the closet page (which only targets items still named "Untitled
+  // item"): this lets someone retag any individual item any time, e.g.
+  // to refresh AI tags after adding manual details, or to retry a
+  // single item that failed without waiting for/running a full batch.
+  async function handleRetagWithAI() {
+    if (!image) return;
+    setRetaggingItem(true);
+    setRetagItemError("");
+    setRetagItemSuccess(false);
+    try {
+      const res = await fetch("/api/tag-item", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image, category }),
+      });
+      const result = await res.json().catch(() => ({}));
+      if (result?.error) {
+        setRetagItemError(
+          typeof result.error === "string" ? result.error : "Retagging failed."
+        );
+        return;
+      }
+      if (result?.name) setName(result.name);
+      if (result?.subcategory) setSubcategory(result.subcategory);
+      if (result?.tags && typeof result.tags === "object") {
+        setTags(result.tags);
+      }
+      setRetagItemSuccess(true);
+    } catch {
+      setRetagItemError("Couldn't reach the tagging service.");
+    } finally {
+      setRetaggingItem(false);
     }
   }
 
@@ -475,6 +548,27 @@ export default function ItemEditSheet({
                   className="w-full mt-1 rounded-xl border border-clay-100 px-3 py-2 text-sm bg-white"
                   placeholder="Item name"
                 />
+                <button
+                  type="button"
+                  onClick={handleRetagWithAI}
+                  disabled={retaggingItem || !image}
+                  className="mt-1.5 flex items-center gap-1.5 text-[11px] text-emerald-700 font-medium disabled:opacity-60"
+                >
+                  {retaggingItem ? (
+                    <Loader2 size={11} className="animate-spin" />
+                  ) : (
+                    <Sparkles size={11} />
+                  )}
+                  {retaggingItem ? "Retagging..." : "Retag with AI"}
+                </button>
+                {retagItemError ? (
+                  <p className="mt-1 text-[11px] text-clay-700">{retagItemError}</p>
+                ) : null}
+                {retagItemSuccess && !retagItemError ? (
+                  <p className="mt-1 text-[11px] text-emerald-700">
+                    Retagged, details below were updated.
+                  </p>
+                ) : null}
               </div>
 
               <div className="flex flex-col md:flex-row gap-3">
@@ -603,7 +697,12 @@ export default function ItemEditSheet({
                         "silhouette",
                         TOP_SILHOUETTE_OPTIONS
                       )}
-                      {renderQuickPickRow("Sleeve", "sleeve", SLEEVE_OPTIONS)}
+                      {renderQuickPickRow(
+                        "Sleeve Length",
+                        "sleeveLength",
+                        SLEEVE_LENGTH_OPTIONS
+                      )}
+                      {renderQuickPickRow("Sleeve Style", "sleeve", SLEEVE_OPTIONS)}
                       {renderQuickPickRow(
                         "Back style",
                         "backStyle",
@@ -649,12 +748,53 @@ export default function ItemEditSheet({
                   ) : null}
                   {category === "makeup" ? (
                     <>
-                      {renderQuickPickRow("Color", "color", COLOR_OPTIONS)}
                       {renderQuickPickRow(
-                        "Finish",
-                        "finish",
-                        MAKEUP_FINISH_OPTIONS
+                        "Makeup type",
+                        "makeupType",
+                        MAKEUP_TYPE_OPTIONS
                       )}
+                      {(() => {
+                        const selectedTypes = parseQuickPickValues(
+                          tags?.makeupType
+                        );
+                        const shadeOptions = Array.from(
+                          new Set(
+                            selectedTypes.flatMap((t) =>
+                              makeupShadeOptionsForType(t)
+                            )
+                          )
+                        );
+                        if (shadeOptions.length === 0) return null;
+                        return renderQuickPickRow(
+                          "Shade",
+                          "shade",
+                          shadeOptions
+                        );
+                      })()}
+                      {(() => {
+                        const selectedTypes = parseQuickPickValues(
+                          tags?.makeupType
+                        );
+                        const finishApplies = selectedTypes.some((t) =>
+                          [
+                            "Foundation",
+                            "Concealer",
+                            "Powder",
+                            "Blush",
+                            "Bronzer",
+                            "Highlighter",
+                            "Eyeshadow",
+                            "Lipstick",
+                            "Lip Gloss",
+                          ].includes(t)
+                        );
+                        if (!finishApplies) return null;
+                        return renderQuickPickRow(
+                          "Finish",
+                          "finish",
+                          MAKEUP_FINISH_OPTIONS
+                        );
+                      })()}
                     </>
                   ) : null}
                 </div>
@@ -711,24 +851,32 @@ export default function ItemEditSheet({
           ) : null}
 
           <div className="flex flex-col md:flex-row gap-3">
-            <div className="flex-1">
-              <label className="text-xs text-stone-500">Laundry status</label>
-              <div className="flex gap-1.5 mt-1.5">
-                {LAUNDRY_OPTIONS.map((opt) => (
-                  <button
-                    key={opt}
-                    onClick={() => setLaundryStatus(opt)}
-                    className={`px-3 py-1.5 rounded-full text-xs capitalize ${
-                      laundryStatus === opt
-                        ? "bg-emerald-600 text-cream"
-                        : "bg-cream-100 text-stone-500"
-                    }`}
-                  >
-                    {opt}
-                  </button>
-                ))}
-              </div>
-            </div>
+            {(() => {
+              const statusConfig = getStatusFieldConfig(category);
+              if (!statusConfig) return null;
+              return (
+                <div className="flex-1">
+                  <label className="text-xs text-stone-500">
+                    {statusConfig.label}
+                  </label>
+                  <div className="flex gap-1.5 mt-1.5">
+                    {LAUNDRY_OPTIONS.map((opt) => (
+                      <button
+                        key={opt}
+                        onClick={() => setLaundryStatus(opt)}
+                        className={`px-3 py-1.5 rounded-full text-xs ${
+                          laundryStatus === opt
+                            ? "bg-emerald-600 text-cream"
+                            : "bg-cream-100 text-stone-500"
+                        }`}
+                      >
+                        {statusConfig.optionLabels[opt]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
 
             <div className="flex-1">
               <label className="text-xs text-stone-500">Closet status</label>

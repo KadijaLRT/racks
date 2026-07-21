@@ -114,13 +114,20 @@ export const TOP_SILHOUETTE_OPTIONS = [
   "Bodysuit",
 ];
 
-export const SLEEVE_OPTIONS = [
+// Length is its own quick-pick row, distinct from sleeve construction
+// style, so a top can get both a length (e.g. "Short Sleeve") and a
+// style (e.g. "Puff / Juliet") as separate selections rather than
+// mixed into one long list.
+export const SLEEVE_LENGTH_OPTIONS = [
   "Sleeveless",
   "Cap Sleeve",
   "Short Sleeve",
   "Elbow-Length",
   "Three-Quarter Sleeve",
   "Long Sleeve",
+];
+
+export const SLEEVE_OPTIONS = [
   "Dolman",
   "Raglan",
   "Kimono Sleeve",
@@ -201,7 +208,83 @@ export const ACCESSORY_MATERIAL_OPTIONS = [
   "Pearl",
 ];
 
-// Makeup-specific quick-picks.
+// Makeup-specific quick-picks. Unlike clothing, makeup shades aren't
+// meaningfully described by the universal COLOR_OPTIONS vocabulary
+// (nobody shops for a lipstick in "Emerald" or a foundation in "Navy"),
+// so makeup gets its own Type + Shade system instead of the generic
+// Color row. Shade options depend on which type is picked: complexion
+// products use undertone/depth language, lip and cheek products use
+// color-family language, eye products use their own palette, and some
+// types (like Setting Spray) have no meaningful shade at all.
+export const MAKEUP_TYPE_OPTIONS = [
+  "Foundation",
+  "Concealer",
+  "Powder",
+  "Blush",
+  "Bronzer",
+  "Highlighter",
+  "Eyeshadow",
+  "Eyeliner",
+  "Mascara",
+  "Brow",
+  "Lipstick",
+  "Lip Gloss",
+  "Lip Liner",
+  "Setting Spray",
+];
+
+const MAKEUP_COMPLEXION_SHADES = [
+  "Fair",
+  "Light",
+  "Light-Medium",
+  "Medium",
+  "Tan",
+  "Deep",
+  "Cool Undertone",
+  "Warm Undertone",
+  "Neutral Undertone",
+  "Olive Undertone",
+];
+
+const MAKEUP_LIP_CHEEK_SHADES = [
+  "Nude",
+  "Pink",
+  "Rose",
+  "Mauve",
+  "Coral",
+  "Red",
+  "Berry",
+  "Brown",
+  "Plum",
+];
+
+const MAKEUP_EYE_SHADES = [
+  "Black",
+  "Brown",
+  "Taupe",
+  "Bronze",
+  "Gold",
+  "Copper",
+  "Navy",
+  "Plum",
+  "Green",
+];
+
+// Maps a selected makeup type to its relevant shade list. Types with no
+// meaningful shade concept (Setting Spray) map to an empty array, which
+// the UI reads as "don't show a Shade row at all" rather than showing
+// an empty/irrelevant one.
+export function makeupShadeOptionsForType(type: string): string[] {
+  const complexionTypes = ["Foundation", "Concealer", "Powder", "Bronzer", "Highlighter"];
+  const lipCheekTypes = ["Blush", "Lipstick", "Lip Gloss", "Lip Liner"];
+  const eyeTypes = ["Eyeshadow", "Eyeliner", "Mascara", "Brow"];
+
+  if (complexionTypes.includes(type)) return MAKEUP_COMPLEXION_SHADES;
+  if (lipCheekTypes.includes(type)) return MAKEUP_LIP_CHEEK_SHADES;
+  if (eyeTypes.includes(type)) return MAKEUP_EYE_SHADES;
+  return [];
+}
+
 export const MAKEUP_FINISH_OPTIONS = [
   "Matte",
   "Satin",

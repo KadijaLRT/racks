@@ -9,10 +9,24 @@ interface ItemCardProps {
   onSelect: (item: ClosetItem) => void;
 }
 
+// Matches the wording used in ItemEditSheet's category-aware status
+// field: "laundry" only makes literal sense for actual clothing, shoes
+// and accessories get "condition" framing instead. Makeup has no
+// status badge at all, same reasoning as the edit sheet: it isn't part
+// of the wearable/laundry concept in this app.
+function dirtyBadgeLabel(category: ClosetItem["category"]): string | null {
+  if (category === "shoes") return "Needs cleaning";
+  if (category === "accessory") return "Needs cleaning";
+  if (category === "makeup") return null;
+  return "In the wash";
+}
+
 export default function ItemCard({ item, onSelect }: ItemCardProps) {
   const name = item?.name || "Untitled item";
   const image = item?.image || "";
-  const dirty = item?.laundryStatus === "dirty";
+  const badgeLabel =
+    item?.laundryStatus === "dirty" ? dirtyBadgeLabel(item?.category) : null;
+  const dirty = Boolean(badgeLabel);
 
   return (
     <button
@@ -41,7 +55,7 @@ export default function ItemCard({ item, onSelect }: ItemCardProps) {
 
       {dirty ? (
         <div className="absolute bottom-0 left-0 right-0 bg-clay-500/90 text-cream text-[10px] text-center py-0.5">
-          In the wash
+          {badgeLabel}
         </div>
       ) : null}
 

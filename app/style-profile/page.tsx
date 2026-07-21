@@ -85,7 +85,7 @@ export default function StyleProfilePage() {
 
       <div className="max-w-md mx-auto px-4 pt-6 space-y-4">
         <div className="flex items-center gap-2">
-          <Link href="/discover" aria-label="Back">
+          <Link href="/profile" aria-label="Back">
             <ArrowLeft size={18} className="text-stone-400" />
           </Link>
           <h1 className="text-xl font-semibold text-stone-800">Style DNA</h1>

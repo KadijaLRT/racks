@@ -30,6 +30,12 @@ const CLOSET_STATUS_OPTIONS: NonNullable<ClosetItem["closetStatus"]>[] = [
   "store",
 ];
 
+function todayIso(): string {
+  const now = new Date();
+  const tzOffsetMs = now.getTimezoneOffset() * 60000;
+  return new Date(now.getTime() - tzOffsetMs).toISOString().slice(0, 10);
+}
+
 export default function ItemEditSheet({
   item,
   onClose,
@@ -39,6 +45,10 @@ export default function ItemEditSheet({
 }: ItemEditSheetProps) {
   const [name, setName] = useState(item?.name || "");
   const [image, setImage] = useState(item?.image || "");
+  const [wornCount, setWornCount] = useState(item?.timesWorn || 0);
+  const [wearHistory, setWearHistory] = useState<string[]>(item?.wearHistory || []);
+  const [wearDatePickerOpen, setWearDatePickerOpen] = useState(false);
+  const [wearDate, setWearDate] = useState(todayIso);
   const [category, setCategory] = useState<ItemCategory>(item?.category || "top");
   const [subcategory, setSubcategory] = useState(item?.subcategory || "");
   const [tags, setTags] = useState<Record<string, string>>(item?.tags || {});
@@ -163,6 +173,44 @@ export default function ItemEditSheet({
       pinned,
       image: image || item.image,
       backImage: backImage || undefined,
+      timesWorn: wornCount,
+    });
+  }
+
+  // Logs a wear immediately, independent of the AI Looks/Manifest flows
+  // (which only bump timesWorn when their own "mark as worn" button is
+  // used). This is the only way to log wearing something that wasn't
+  // styled by the AI, e.g. an everyday grab that didn't go through
+  // Looks at all. Saves right away rather than waiting for "Save
+  // changes", since logging a wear is its own action, not a pending
+  // edit the person might discard.
+  // Logs a wear for the selected date (defaults to today), independent
+  // of the AI Looks/Manifest flows (which only bump timesWorn when
+  // their own "mark as worn" button is used). This is the only way to
+  // log wearing something that wasn't styled by the AI, or to backfill
+  // a wear from an earlier day. Saves right away rather than waiting
+  // for "Save changes", since logging a wear is its own action, not a
+  // pending edit the person might discard.
+  function handleMarkWorn(date: string) {
+    const next = wornCount + 1;
+    const nextHistory = [...wearHistory, date].sort();
+    setWornCount(next);
+    setWearHistory(nextHistory);
+    setWearDatePickerOpen(false);
+    onSave({
+      ...item,
+      name: name.trim() || "Untitled item",
+      category,
+      subcategory: subcategory.trim() || undefined,
+      tags: tags || {},
+      notes: notes.trim() || undefined,
+      laundryStatus,
+      closetStatus,
+      pinned,
+      image: image || item.image,
+      backImage: backImage || undefined,
+      timesWorn: next,
+      wearHistory: nextHistory,
     });
   }
 
@@ -714,18 +762,55 @@ export default function ItemEditSheet({
             />
           </div>
 
-          <div className="flex items-center justify-between">
-            <p className="text-xs text-stone-400">
-              Worn {item?.timesWorn || 0} {item?.timesWorn === 1 ? "time" : "times"}
-            </p>
-            {onRemix ? (
-              <button
-                onClick={() => onRemix(item)}
-                className="flex items-center gap-1.5 text-xs text-emerald-700 font-medium"
-              >
-                <Shuffle size={13} />
-                Remix this item
-              </button>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-stone-400">
+                Worn {wornCount} {wornCount === 1 ? "time" : "times"}
+              </p>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => handleMarkWorn(todayIso())}
+                  className="flex items-center gap-1.5 text-xs text-emerald-700 font-medium"
+                >
+                  <Plus size={13} />
+                  Mark as worn today
+                </button>
+                {onRemix ? (
+                  <button
+                    onClick={() => onRemix(item)}
+                    className="flex items-center gap-1.5 text-xs text-emerald-700 font-medium"
+                  >
+                    <Shuffle size={13} />
+                    Remix this item
+                  </button>
+                ) : null}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setWearDatePickerOpen((o) => !o)}
+              className="text-[11px] text-stone-400 underline underline-offset-2"
+            >
+              {wearDatePickerOpen ? "Cancel" : "Log a different date"}
+            </button>
+
+            {wearDatePickerOpen ? (
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={wearDate}
+                  max={todayIso()}
+                  onChange={(e) => setWearDate(e.target.value)}
+                  className="rounded-xl border border-clay-100 px-2.5 py-1.5 text-xs bg-white"
+                />
+                <button
+                  onClick={() => handleMarkWorn(wearDate)}
+                  className="rounded-full bg-emerald-600 text-cream text-xs font-medium px-3 py-1.5"
+                >
+                  Log wear
+                </button>
+              </div>
             ) : null}
           </div>
         </div>

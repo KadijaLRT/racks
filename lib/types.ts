@@ -278,6 +278,7 @@ export interface ClosetItem {
   tags: Record<string, string>; // e.g. { color: "cream", material: "linen" }
   laundryStatus: "clean" | "dirty" | "dry-clean";
   timesWorn: number;
+  wearHistory?: string[]; // ISO date strings (YYYY-MM-DD), logged going forward; timesWorn is the source of truth for the count shown in the UI, this is a supplementary date log
   pinned?: boolean;
   closetStatus?: "keep" | "donate" | "sell" | "repair" | "store";
   notes?: string;

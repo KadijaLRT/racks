@@ -1,10 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, Settings, Ruler, ChevronRight } from "lucide-react";
+import { ArrowLeft, Settings, Ruler, Sparkles, ChevronRight } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
 
 const CARDS = [
+  {
+    href: "/style-profile",
+    icon: Sparkles,
+    title: "Style DNA",
+    blurb: "Describe your style and save inspiration photos.",
+  },
   {
     href: "/profile/measurements",
     icon: Ruler,

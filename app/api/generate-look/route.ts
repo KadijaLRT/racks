@@ -87,6 +87,38 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // The prompt requires the model to build top+bottom, a dress, or a
+    // set, plus shoes. If the closet genuinely can't support any of
+    // those combinations, Groq will legitimately come back with an
+    // empty itemIds array and no way to explain why, since it has no
+    // more context than we do. Checking category coverage up front lets
+    // us tell the person exactly what's missing instead of a generic
+    // "couldn't put together a look" that gives no next step.
+    const hasCategory = (cat: string) => wearable.some((i) => i?.category === cat);
+    const canFormOutfit =
+      hasCategory("dress") ||
+      hasCategory("set") ||
+      (hasCategory("top") && hasCategory("bottom"));
+    const hasShoes = hasCategory("shoes");
+
+    if (!canFormOutfit || !hasShoes) {
+      const missing: string[] = [];
+      if (!canFormOutfit) {
+        missing.push("a dress, a set, or a top and a bottom");
+      }
+      if (!hasShoes) {
+        missing.push("shoes");
+      }
+      return NextResponse.json(
+        {
+          error: `Your closet doesn't have enough marked-clean items yet to build a full look. Add ${missing.join(
+            " and "
+          )} to get started.`,
+        },
+        { status: 400 }
+      );
+    }
+
     // Every string field pulled from closet items is sanitized before
     // being interpolated into the prompt sent to Groq.
     const closetList = wearable

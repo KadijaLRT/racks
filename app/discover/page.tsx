@@ -1,7 +1,6 @@
 import Link from "next/link";
 import {
   Heart,
-  Sparkles,
   Palette,
   Scissors,
   BarChart3,
@@ -30,12 +29,6 @@ const CARDS = [
     icon: Wand2,
     title: "Manifest a look",
     blurb: "Dress for what you want to call in, love, confidence, prosperity.",
-  },
-  {
-    href: "/style-profile",
-    icon: Sparkles,
-    title: "Style DNA",
-    blurb: "Describe your style and save inspiration photos.",
   },
   {
     href: "/color",

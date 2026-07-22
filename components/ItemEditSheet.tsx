@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { X, Pin, PinOff, Trash2, Plus, Shuffle, Camera, Loader2, ChevronDown, Sparkles, Image as ImageIcon } from "lucide-react";
 import type { ClosetItem, ItemCategory } from "@/lib/types";
+import { buildLocalItemName } from "@/lib/localNaming";
 import { JEAN_CUT_OPTIONS, RISE_HEIGHT_OPTIONS, SKIRT_LENGTH_OPTIONS, SHORTS_LENGTH_OPTIONS, NECKLINE_OPTIONS, TOP_SILHOUETTE_OPTIONS, SLEEVE_LENGTH_OPTIONS, SLEEVE_OPTIONS, BACK_STYLE_OPTIONS, SUBCATEGORY_SUGGESTIONS, COLOR_OPTIONS, PATTERN_OPTIONS, FABRIC_OPTIONS, WASH_OPTIONS, OUTERWEAR_CLOSURE_OPTIONS, OUTERWEAR_LENGTH_OPTIONS, SHOE_HEEL_OPTIONS, SHOE_TOE_OPTIONS, SHOE_MATERIAL_OPTIONS, accessoryMaterialOptionsForSubcategory, JEWELRY_TYPE_OPTIONS, HAT_TYPE_OPTIONS, MAKEUP_FINISH_OPTIONS, makeupTypeOptionsForSubcategory, makeupShadeOptionsForType, makeupFinishAppliesToTypes, KNIT_TYPE_OPTIONS, HOOD_STYLE_OPTIONS, HOOD_POCKET_OPTIONS, GARMENT_FIT_OPTIONS } from "@/lib/types";
 import { CATEGORIES, categoryLabel } from "@/lib/categories";
 import { fileToResizedDataUrl } from "@/lib/image";
@@ -78,6 +79,9 @@ export default function ItemEditSheet({
   onRemix,
 }: ItemEditSheetProps) {
   const [name, setName] = useState(item?.name || "");
+  const [nameAutoFillable, setNameAutoFillable] = useState(
+    !item?.name || item.name === "Untitled item"
+  );
   const [image, setImage] = useState(item?.image || "");
   const [wornCount, setWornCount] = useState(item?.timesWorn || 0);
   const [wearHistory, setWearHistory] = useState<string[]>(item?.wearHistory || []);
@@ -86,6 +90,20 @@ export default function ItemEditSheet({
   const [category, setCategory] = useState<ItemCategory>(item?.category || "top");
   const [subcategory, setSubcategory] = useState(item?.subcategory || "");
   const [tags, setTags] = useState<Record<string, string>>(item?.tags || {});
+
+  // No-AI naming path: as soon as someone picks a subcategory and/or a
+  // color quick-pick, this derives a real name locally (e.g. "Rust
+  // Matching Set") instead of leaving "Untitled item" as the only
+  // option until they type something themselves. This is what makes
+  // manual cataloging (Settings > Auto-tag off) a genuinely workable
+  // path, not just a degraded fallback when AI tagging isn't available.
+  // Computed at render time rather than synced via effect+setState,
+  // since it's purely derived from other state. Stops once the person
+  // types their own name (nameAutoFillable turns false) or once AI has
+  // already given a real name.
+  const effectiveName = nameAutoFillable
+    ? buildLocalItemName(category, subcategory, tags) || name
+    : name;
   const [notes, setNotes] = useState(item?.notes || "");
   const [laundryStatus, setLaundryStatus] = useState<ClosetItem["laundryStatus"]>(
     item?.laundryStatus || "clean"
@@ -138,7 +156,10 @@ export default function ItemEditSheet({
         });
         const result = await res.json().catch(() => ({}));
         if (!result?.error) {
-          if (result?.name) setName(result.name);
+          if (result?.name) {
+            setName(result.name);
+            setNameAutoFillable(false);
+          }
           if (result?.subcategory) setSubcategory(result.subcategory);
           if (result?.tags && typeof result.tags === "object") {
             setTags(result.tags);
@@ -181,7 +202,10 @@ export default function ItemEditSheet({
         );
         return;
       }
-      if (result?.name) setName(result.name);
+      if (result?.name) {
+        setName(result.name);
+        setNameAutoFillable(false);
+      }
       if (result?.subcategory) setSubcategory(result.subcategory);
       if (result?.tags && typeof result.tags === "object") {
         setTags(result.tags);
@@ -238,7 +262,7 @@ export default function ItemEditSheet({
   function handleSave() {
     onSave({
       ...item,
-      name: name.trim() || "Untitled item",
+      name: effectiveName.trim() || "Untitled item",
       category,
       subcategory: subcategory.trim() || undefined,
       tags: tags || {},
@@ -274,7 +298,7 @@ export default function ItemEditSheet({
     setWearDatePickerOpen(false);
     onSave({
       ...item,
-      name: name.trim() || "Untitled item",
+      name: effectiveName.trim() || "Untitled item",
       category,
       subcategory: subcategory.trim() || undefined,
       tags: tags || {},
@@ -545,8 +569,11 @@ export default function ItemEditSheet({
               <div>
                 <label className="text-xs text-stone-500">Name</label>
                 <input
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  value={effectiveName}
+                  onChange={(e) => {
+                    setName(e.target.value);
+                    setNameAutoFillable(false);
+                  }}
                   className="w-full mt-1 rounded-xl border border-clay-100 px-3 py-2 text-sm bg-white"
                   placeholder="Item name"
                 />
@@ -690,16 +717,29 @@ export default function ItemEditSheet({
                   {renderSubcategoryQuickPicks(
                     SUBCATEGORY_SUGGESTIONS[category] || []
                   )}
-                  {category !== "makeup" ? (
+                  {category === "accessory" ? (
                     <>
-                      {renderQuickPickRow("Color", "color", COLOR_OPTIONS)}
-                      {renderQuickPickRow("Pattern", "pattern", PATTERN_OPTIONS)}
-                      {category !== "shoes" && category !== "accessory"
-                        ? renderQuickPickRow("Fabric", "fabric", FABRIC_OPTIONS)
+                      {subcategory.toLowerCase().includes("jewelry")
+                        ? renderQuickPickRow(
+                            "Jewelry Type",
+                            "jewelryType",
+                            JEWELRY_TYPE_OPTIONS
+                          )
                         : null}
+                      {subcategory.toLowerCase().includes("hat")
+                        ? renderQuickPickRow(
+                            "Hat Type",
+                            "hatType",
+                            HAT_TYPE_OPTIONS
+                          )
+                        : null}
+                      {renderQuickPickRow(
+                        "Material",
+                        "material",
+                        accessoryMaterialOptionsForSubcategory(subcategory)
+                      )}
                     </>
                   ) : null}
-                  <div className="border-t border-clay-50 -mx-3" />
                   {category === "bottom" ? (
                     <>
                       {!subcategory.toLowerCase().includes("short") &&
@@ -799,29 +839,6 @@ export default function ItemEditSheet({
                       )}
                     </>
                   ) : null}
-                  {category === "accessory" ? (
-                    <>
-                      {subcategory.toLowerCase().includes("jewelry")
-                        ? renderQuickPickRow(
-                            "Jewelry Type",
-                            "jewelryType",
-                            JEWELRY_TYPE_OPTIONS
-                          )
-                        : null}
-                      {subcategory.toLowerCase().includes("hat")
-                        ? renderQuickPickRow(
-                            "Hat Type",
-                            "hatType",
-                            HAT_TYPE_OPTIONS
-                          )
-                        : null}
-                      {renderQuickPickRow(
-                        "Material",
-                        "material",
-                        accessoryMaterialOptionsForSubcategory(subcategory)
-                      )}
-                    </>
-                  ) : null}
                   {category === "makeup" ? (
                     <>
                       {renderQuickPickRow(
@@ -858,6 +875,16 @@ export default function ItemEditSheet({
                           MAKEUP_FINISH_OPTIONS
                         );
                       })()}
+                    </>
+                  ) : null}
+                  {category !== "makeup" ? (
+                    <>
+                      <div className="border-t border-clay-50 -mx-3" />
+                      {renderQuickPickRow("Color", "color", COLOR_OPTIONS)}
+                      {renderQuickPickRow("Pattern", "pattern", PATTERN_OPTIONS)}
+                      {category !== "shoes" && category !== "accessory"
+                        ? renderQuickPickRow("Fabric", "fabric", FABRIC_OPTIONS)
+                        : null}
                     </>
                   ) : null}
                 </div>

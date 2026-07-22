@@ -155,6 +155,16 @@ async function waitForTurn(): Promise<void> {
 let activeLabel: string | null = null;
 
 
+function throwFormattedRateLimitError(res: Response): never {
+  const retryAfterHeader = res.headers.get("retry-after");
+  const retryAfterSec = retryAfterHeader ? parseFloat(retryAfterHeader) : NaN;
+  throw new Error(
+    Number.isFinite(retryAfterSec)
+      ? formatRateLimitMessage(retryAfterSec)
+      : "Groq's rate limit was hit from too many recent AI requests. Wait a bit and try tagging this item again."
+  );
+}
+
 /**
  * Sends a chat completion request to Groq. Credentials are read only from
  * process.env server-side; never accept an API key from the client.
@@ -208,7 +218,7 @@ export async function groqChat(
         // A long wait means a per-day cap, not a per-minute burst.
         // Retrying won't help within this request, so fail fast with the
         // real wait time rather than looping.
-        throw new Error(formatRateLimitMessage(retryAfterSec));
+        throwFormattedRateLimitError(res);
       }
 
       const waitMs = Number.isFinite(retryAfterSec) && retryAfterSec > 0
@@ -221,13 +231,7 @@ export async function groqChat(
     }
 
     if (res.status === 429) {
-      const retryAfterHeader = res.headers.get("retry-after");
-      const retryAfterSec = retryAfterHeader ? parseFloat(retryAfterHeader) : NaN;
-      throw new Error(
-        Number.isFinite(retryAfterSec)
-          ? formatRateLimitMessage(retryAfterSec)
-          : "Groq's rate limit was hit from too many recent AI requests. Wait a bit and try tagging this item again."
-      );
+      throwFormattedRateLimitError(res);
     }
 
     // A transient generation hiccup (empty failed_generation / strict JSON
@@ -239,6 +243,17 @@ export async function groqChat(
     // giving up.
     let attempt = 0;
     while (!res.ok && opts.jsonMode && attempt < 2) {
+      // A retry within this loop can itself come back rate-limited (e.g.
+      // the first call succeeded but returned malformed JSON, and by the
+      // time the retry goes out the daily token cap has been crossed).
+      // That's not a JSON-validation problem, so it needs to be checked
+      // for and handled with the same friendly message before falling
+      // through to the raw-text throw below, rather than being treated
+      // as "not a validation failure" and leaking Groq's internal error
+      // JSON straight to the user.
+      if (res.status === 429) {
+        throwFormattedRateLimitError(res);
+      }
       const text = await res.text();
       if (!isJsonValidationFailure(text)) {
         throw new Error(`Groq API error (${res.status}): ${text}`);
@@ -250,6 +265,10 @@ export async function groqChat(
         { ...opts, temperature: (opts.temperature ?? 0.4) + 0.15 * attempt },
         apiKey
       );
+    }
+
+    if (res.status === 429) {
+      throwFormattedRateLimitError(res);
     }
 
     if (!res.ok) {

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ArrowLeft, Sparkles, Loader2 } from "lucide-react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import BottomNav from "@/components/BottomNav";
 import { closetStore } from "@/lib/storage";
 import type { ClosetItem } from "@/lib/types";
@@ -21,6 +21,7 @@ interface Suggestion {
 }
 
 export default function CleanupPage() {
+  const router = useRouter();
   const [items, setItems] = useState<ClosetItem[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [suggesting, setSuggesting] = useState(false);
@@ -93,9 +94,13 @@ export default function CleanupPage() {
     <main className="min-h-screen pb-28 pt-safe bg-cream">
       <div className="max-w-md mx-auto px-4 pt-6 space-y-4">
         <div className="flex items-center gap-2">
-          <Link href="/insights" aria-label="Back">
+          <button
+            onClick={() => router.back()}
+            aria-label="Back"
+            className="p-0.5 -m-0.5"
+          >
             <ArrowLeft size={18} className="text-stone-400" />
-          </Link>
+          </button>
           <h1 className="text-xl font-semibold text-stone-800">Cleanup</h1>
         </div>
         <p className="text-sm text-stone-500">

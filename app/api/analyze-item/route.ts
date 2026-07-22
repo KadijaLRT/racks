@@ -113,7 +113,7 @@ ${closetList || "(closet is empty)"}`;
 
     const content = await groqChat(
       [buildTextMessage("system", systemPrompt), buildTextMessage("user", userPrompt)],
-      { model: TEXT_MODEL, jsonMode: true, temperature: 0.4 }
+      { model: TEXT_MODEL, jsonMode: true, temperature: 0.4, label: "Analyzing wishlist item", maxCompletionTokens: 700 }
     );
 
     const parsed = parseGroqJson<AnalysisResult>(content, FALLBACK);

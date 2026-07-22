@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
           image
         ),
       ],
-      { model: VISION_MODEL, jsonMode: true, temperature: 0.3 }
+      { model: VISION_MODEL, jsonMode: true, temperature: 0.3, label: "Tagging screenshot items", maxCompletionTokens: 4096 }
     );
 
     const parsed = parseGroqJson(content, { items: [] as DetectedItem[] });

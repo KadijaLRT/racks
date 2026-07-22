@@ -15,13 +15,25 @@ export type ItemCategory =
   | "makeup";
 
 export const SUBCATEGORY_SUGGESTIONS: Record<ItemCategory, string[]> = {
-  top: ["t-shirt", "blouse", "tank", "camisole", "tube top", "crop top", "bralette", "sweater", "hoodie", "sweatshirt", "button-down", "henley", "polo", "turtleneck", "bodysuit", "peplum top", "wrap top", "halter top", "off-shoulder top", "tunic"],
+  top: [
+    // Basics
+    "t-shirt", "tank", "camisole", "tube top", "crop top", "bralette", "bodysuit",
+    // Button-front / collared
+    "button-down", "henley", "polo", "blouse",
+    // Knits / layering
+    "sweater", "turtleneck", "hoodie", "sweatshirt",
+    // Going-out styles
+    "peplum top", "wrap top", "halter top", "off-shoulder top", "tunic",
+  ],
   bottom: ["jeans", "trousers", "shorts", "skirt", "leggings", "skort"],
   dress: ["mini", "midi", "maxi", "gown"],
   set: ["matching set", "jumpsuit", "romper", "bathing suit", "sweatsuit", "tracksuit", "loungewear"],
   outerwear: ["jacket", "coat", "blazer", "cardigan", "vest"],
   shoes: ["sneakers", "heels", "boots", "flats", "sandals"],
-  accessory: ["bag", "jewelry", "belt", "scarf", "hat", "sunglasses"],
+  accessory: [
+    "bag", "jewelry", "belt", "hat", "sunglasses", "scarf",
+    "socks", "tights", "stockings",
+  ],
   makeup: ["face", "eyes", "lips", "cheeks"],
 };
 
@@ -163,15 +175,53 @@ export const HOOD_STYLE_OPTIONS = [
 export const HOOD_POCKET_OPTIONS = ["Kangaroo Pocket", "Zip Pockets", "No Pocket"];
 
 // Shown only when the subcategory suggests a sweatsuit/tracksuit.
-export const SWEATSUIT_FABRIC_OPTIONS = [
+// Universal fabric/material quick-pick, shown alongside Color/Pattern
+// for bottoms, tops/dresses/sets, and outerwear. Absorbs what used to
+// be a separate sweatsuit-only "Fabric" list (Fleece, French Terry,
+// Velour, Waffle Knit) so a sweatsuit doesn't show two same-labeled
+// "Fabric" rows back to back.
+export const FABRIC_OPTIONS = [
+  "Cotton",
+  "Linen",
+  "Silk",
+  "Satin",
+  "Chiffon",
+  "Denim",
+  "Leather",
+  "Faux Leather",
+  "Suede",
+  "Wool",
+  "Cashmere",
+  "Velvet",
+  "Corduroy",
+  "Jersey",
+  "Knit",
+  "Chambray",
+  "Tweed",
   "Fleece",
   "French Terry",
   "Velour",
   "Waffle Knit",
-  "Jersey",
+  "Nylon",
+  "Polyester",
+  "Spandex / Elastane",
 ];
 
-export const SWEATSUIT_FIT_OPTIONS = ["Relaxed", "Fitted", "Oversized", "Cropped"];
+export const GARMENT_FIT_OPTIONS = ["Relaxed", "Fitted", "Oversized", "Cropped"];
+
+// Shoe-specific material, distinct from ACCESSORY_MATERIAL_OPTIONS
+// since shoe construction has its own common vocabulary (patent,
+// rubber sole material, etc.) not shared with bags/jewelry.
+export const SHOE_MATERIAL_OPTIONS = [
+  "Leather",
+  "Suede",
+  "Canvas",
+  "Mesh",
+  "Patent Leather",
+  "Faux Leather",
+  "Rubber",
+  "Knit",
+];
 
 // Length is its own quick-pick row, distinct from sleeve construction
 // style, so a top can get both a length (e.g. "Short Sleeve") and a
@@ -268,11 +318,44 @@ export const ACCESSORY_MATERIAL_OPTIONS = [
   "Gold-Tone",
   "Silver-Tone",
   "Fabric",
+  "Silk",
+  "Wool",
+  "Cashmere",
   "Straw",
   "Wood",
   "Beaded",
   "Pearl",
+  "Acetate",
+  "Plastic",
 ];
+
+// Filters the material list down to what's actually relevant for the
+// accessory's subcategory, same pattern as makeupTypeOptionsForSubcategory:
+// nobody needs to see "Cashmere" as an option for a metal watch, or
+// "Gold-Tone" for a canvas tote. Falls back to the full list if no
+// subcategory is set yet, rather than hiding the row.
+export function accessoryMaterialOptionsForSubcategory(subcategory: string): string[] {
+  const normalized = subcategory.toLowerCase();
+  if (normalized.includes("bag")) {
+    return ["Leather", "Faux Leather", "Canvas", "Suede", "Fabric", "Straw", "Wood", "Metal"];
+  }
+  if (normalized.includes("jewelry")) {
+    return ["Metal", "Gold-Tone", "Silver-Tone", "Beaded", "Pearl", "Wood"];
+  }
+  if (normalized.includes("belt")) {
+    return ["Leather", "Faux Leather", "Fabric", "Metal"];
+  }
+  if (normalized.includes("scarf")) {
+    return ["Silk", "Wool", "Cashmere", "Fabric"];
+  }
+  if (normalized.includes("hat")) {
+    return ["Straw", "Fabric", "Wool", "Leather"];
+  }
+  if (normalized.includes("sunglasses")) {
+    return ["Metal", "Acetate", "Plastic", "Wood"];
+  }
+  return ACCESSORY_MATERIAL_OPTIONS;
+}
 
 // Shown only when the accessory subcategory is jewelry, since these
 // don't apply to bags, belts, scarves, hats, or sunglasses.
@@ -402,6 +485,19 @@ export function makeupShadeOptionsForType(type: string): string[] {
   if (lipCheekTypes.includes(type)) return MAKEUP_LIP_CHEEK_SHADES;
   if (eyeTypes.includes(type)) return MAKEUP_EYE_SHADES;
   return [];
+}
+
+// "Finish" (Matte/Dewy/Sheer/Full Coverage) doesn't apply to every
+// makeup type, e.g. mascara or brow product don't have a meaningful
+// finish in this sense, so this gates the row the same way shade is
+// gated, instead of the component hardcoding the applicable list.
+const MAKEUP_FINISH_TYPES = [
+  "Foundation", "Concealer", "Powder", "Blush", "Bronzer",
+  "Highlighter", "Eyeshadow", "Lipstick", "Lip Gloss",
+];
+
+export function makeupFinishAppliesToTypes(types: string[]): boolean {
+  return types.some((t) => MAKEUP_FINISH_TYPES.includes(t));
 }
 
 export const MAKEUP_FINISH_OPTIONS = [
@@ -598,6 +694,17 @@ export interface UserMeasurements {
   shoeSize?: string;
   notes?: string;
   updatedAt: number;
+}
+
+export interface AppSettings {
+  // When false, adding a single item to the closet skips the automatic
+  // AI tagging call entirely and saves it instantly as "Untitled item".
+  // AI only runs when explicitly requested afterward (the individual
+  // "Retag with AI" button, or the closet's bulk "Retag now" banner),
+  // so importing many items in a row doesn't burn through Groq's rate
+  // limit just from the act of adding them. Defaults to true (existing
+  // behavior) so nothing changes unless someone turns it off.
+  autoTagOnUpload?: boolean;
 }
 
 export interface UpcomingPlan {

@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
           image
         ),
       ],
-      { model: VISION_MODEL, jsonMode: true, temperature: 0.2 }
+      { model: VISION_MODEL, jsonMode: true, temperature: 0.2, label: "Tagging back photo", maxCompletionTokens: 400 }
     );
 
     const parsed = parseGroqJson(content, { tags: {} as Record<string, string> });

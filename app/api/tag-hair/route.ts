@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
           image
         ),
       ],
-      { model: VISION_MODEL, jsonMode: true, temperature: 0.2 }
+      { model: VISION_MODEL, jsonMode: true, temperature: 0.2, label: "Analyzing hair photo", maxCompletionTokens: 400 }
     );
 
     const parsed = parseGroqJson(content, {

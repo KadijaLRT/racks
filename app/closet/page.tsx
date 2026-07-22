@@ -8,7 +8,7 @@ import ItemEditSheet from "@/components/ItemEditSheet";
 import RemixSheet from "@/components/RemixSheet";
 import BulkImportSheet from "@/components/BulkImportSheet";
 import { fileToResizedDataUrl } from "@/lib/image";
-import { closetStore } from "@/lib/storage";
+import { closetStore, appSettingsStore } from "@/lib/storage";
 import type { ClosetItem, ItemCategory } from "@/lib/types";
 import { CATEGORIES } from "@/lib/categories";
 
@@ -18,6 +18,7 @@ export default function ClosetPage() {
   const [filter, setFilter] = useState<ItemCategory | "all">("all");
   const [search, setSearch] = useState("");
   const [pendingCategory, setPendingCategory] = useState<ItemCategory>("top");
+  const [autoTagOnUpload, setAutoTagOnUpload] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const [selected, setSelected] = useState<ClosetItem | null>(null);
@@ -64,6 +65,10 @@ export default function ClosetPage() {
       setItems(all || []);
       setLoaded(true);
     });
+    appSettingsStore.get().then((settings) => {
+      // Default true (existing behavior) if never set.
+      setAutoTagOnUpload(settings?.autoTagOnUpload !== false);
+    });
   }, []);
 
   const filteredItems = useMemo(() => {
@@ -99,28 +104,30 @@ export default function ClosetPage() {
       let tags: Record<string, string> = {};
       let taggingFailReason = "";
 
-      try {
-        const res = await fetch("/api/tag-item", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ image: dataUrl, category: pendingCategory }),
-        });
-        const tagged = await res.json().catch(() => ({}));
-        if (!tagged?.error) {
-          name = tagged?.name || name;
-          subcategory = tagged?.subcategory || "";
-          tags = tagged?.tags || {};
-        } else {
-          taggingFailReason =
-            typeof tagged.error === "string" ? tagged.error : "Auto-tagging failed";
+      if (autoTagOnUpload) {
+        try {
+          const res = await fetch("/api/tag-item", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ image: dataUrl, category: pendingCategory }),
+          });
+          const tagged = await res.json().catch(() => ({}));
+          if (!tagged?.error) {
+            name = tagged?.name || name;
+            subcategory = tagged?.subcategory || "";
+            tags = tagged?.tags || {};
+          } else {
+            taggingFailReason =
+              typeof tagged.error === "string" ? tagged.error : "Auto-tagging failed";
+          }
+        } catch {
+          // AI tagging is a nice-to-have, not a blocker: the item still
+          // saves untagged so the user can fill it in manually. Still
+          // worth telling the person why, rather than a silent
+          // "Untitled item" with no explanation (e.g. Groq's per-minute
+          // rate limit hit after several uploads in a row).
+          taggingFailReason = "Couldn't reach the tagging service";
         }
-      } catch {
-        // AI tagging is a nice-to-have, not a blocker: the item still
-        // saves untagged so the user can fill it in manually. Still
-        // worth telling the person why, rather than a silent
-        // "Untitled item" with no explanation (e.g. Groq's per-minute
-        // rate limit hit after several uploads in a row).
-        taggingFailReason = "Couldn't reach the tagging service";
       }
 
       const saved = await closetStore.create({

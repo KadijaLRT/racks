@@ -11,6 +11,7 @@ import type {
   StyleProfile,
   StyleInspiration,
   UserMeasurements,
+  AppSettings,
 } from "./types";
 
 // ---- id + prefix helpers -------------------------------------------------
@@ -34,6 +35,7 @@ const SINGLETON_KEY = {
   colorProfile: "color-profile",
   styleProfile: "style-profile",
   measurements: "user-measurements",
+  appSettings: "app-settings",
 } as const;
 
 /**
@@ -176,6 +178,10 @@ export const measurementsStore = createSingleton<UserMeasurements>(
   SINGLETON_KEY.measurements
 );
 
+export const appSettingsStore = createSingleton<AppSettings>(
+  SINGLETON_KEY.appSettings
+);
+
 // ---- cross-cutting helpers ----------------------------------------------
 
 /**
@@ -246,6 +252,7 @@ export async function importAllData(
     ["colorProfile", colorProfileStore],
     ["styleProfile", styleProfileStore],
     ["measurements", measurementsStore],
+    ["appSettings", appSettingsStore],
   ];
 
   for (const [key, store] of singletonStores) {
@@ -269,7 +276,7 @@ export async function importAllData(
  * store never breaks the export.
  */
 export async function exportAllData() {
-  const [closet, wigs, looks, wishlist, trips, plans, inspirations, hair, color, style, measurements] =
+  const [closet, wigs, looks, wishlist, trips, plans, inspirations, hair, color, style, measurements, appSettings] =
     await Promise.all([
       closetStore.getAll(),
       wigStore.getAll(),
@@ -282,6 +289,7 @@ export async function exportAllData() {
       colorProfileStore.get(),
       styleProfileStore.get(),
       measurementsStore.get(),
+      appSettingsStore.get(),
     ]);
 
   return {
@@ -296,6 +304,7 @@ export async function exportAllData() {
     colorProfile: color || null,
     styleProfile: style || null,
     measurements: measurements || null,
+    appSettings: appSettings || null,
     exportedAt: Date.now(),
   };
 }

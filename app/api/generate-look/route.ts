@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { groqChat, parseGroqJson, buildTextMessage, TEXT_MODEL } from "@/lib/groq";
-import { sanitizeGroqText, sanitizeGroqPayload } from "@/lib/groqSanitizer";
+import { sanitizeGroqText, sanitizeGroqPayload, formatTagsCompact } from "@/lib/groqSanitizer";
 import type { ClosetItem, WigItem, HairProfile, ColorProfile, UserMeasurements } from "@/lib/types";
 
 interface GenerateLookRequestBody {
@@ -137,14 +137,14 @@ export async function POST(req: NextRequest) {
     const makeupList = ownedMakeup
       .map((i) => {
         const safe = sanitizeGroqPayload({ name: i?.name || "", tags: i?.tags || {} });
-        return `- id:${i.id} | ${safe.name} | ${JSON.stringify(safe.tags)}`;
+        return `- id:${i.id} | ${safe.name} | ${formatTagsCompact(safe.tags)}`;
       })
       .join("\n");
 
     const wigList = (wigs || [])
       .map((w) => {
         const safe = sanitizeGroqPayload({ name: w?.name || "", tags: w?.tags || {} });
-        return `- id:${w.id} | wig | ${safe.name} | ${JSON.stringify(safe.tags)}`;
+        return `- id:${w.id} | wig | ${safe.name} | ${formatTagsCompact(safe.tags)}`;
       })
       .join("\n");
 
@@ -152,7 +152,7 @@ export async function POST(req: NextRequest) {
     if (hairProfile?.mode === "description" && hairProfile?.description) {
       hairContext = `User describes their hair as: "${sanitizeGroqText(hairProfile.description)}"`;
     } else if (hairProfile?.tags) {
-      hairContext = `User's current hair: ${JSON.stringify(sanitizeGroqPayload(hairProfile.tags))}`;
+      hairContext = `User's current hair: ${formatTagsCompact(sanitizeGroqPayload(hairProfile.tags))}`;
     }
 
     const weatherContext = weather
@@ -262,7 +262,7 @@ ${refinementContext ? "Apply the requested change to the existing look." : "Buil
 
     const content = await groqChat(
       [buildTextMessage("system", systemPrompt), buildTextMessage("user", userPrompt)],
-      { model: TEXT_MODEL, jsonMode: true, temperature: 0.6 }
+      { model: TEXT_MODEL, jsonMode: true, temperature: 0.6, label: "Generating a look", maxCompletionTokens: 1200 }
     );
 
     const parsed = parseGroqJson<GeneratedLookResponse>(content, FALLBACK_LOOK);

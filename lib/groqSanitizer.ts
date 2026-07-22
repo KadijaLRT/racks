@@ -80,6 +80,23 @@ export function sanitizeGroqPayload<T>(payload: T): T {
   }
 }
 
+/**
+ * Formats a tags object as "key: value, key: value" instead of
+ * JSON.stringify's {"key":"value","key":"value"}. Same information,
+ * roughly 25-35% fewer characters (no braces, no quote marks around
+ * every key and value), which matters because several routes rebuild
+ * and resend the entire closet/wishlist list as prompt text on every
+ * single call — that serialization overhead repeats on every request,
+ * so trimming it here cuts real input-token cost app-wide rather than
+ * just once.
+ */
+export function formatTagsCompact(tags: Record<string, string> | undefined | null): string {
+  if (!tags) return "";
+  return Object.entries(tags)
+    .map(([k, v]) => `${k}: ${v}`)
+    .join(", ");
+}
+
 /** Validates a data URL image before it's sent to a vision model. */
 export function isSafeImageDataUrl(value: unknown): value is string {
   return (

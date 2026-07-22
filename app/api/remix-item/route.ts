@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { groqChat, parseGroqJson, buildTextMessage, TEXT_MODEL } from "@/lib/groq";
-import { sanitizeGroqPayload } from "@/lib/groqSanitizer";
+import { sanitizeGroqPayload, formatTagsCompact } from "@/lib/groqSanitizer";
 import type { ClosetItem } from "@/lib/types";
 
 interface RemixBody {
@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
           name: i?.name || "",
           tags: i?.tags || {},
         });
-        return `- id:${i.id} | ${safe.category} | ${safe.name} | ${JSON.stringify(safe.tags)}`;
+        return `- id:${i.id} | ${safe.category} | ${safe.name} | ${formatTagsCompact(safe.tags)}`;
       })
       .join("\n");
 
@@ -78,7 +78,7 @@ Build 3 distinct outfits, each including the anchor item's id: "${anchorItem.id}
 
     const content = await groqChat(
       [buildTextMessage("system", systemPrompt), buildTextMessage("user", userPrompt)],
-      { model: TEXT_MODEL, jsonMode: true, temperature: 0.6 }
+      { model: TEXT_MODEL, jsonMode: true, temperature: 0.6, label: "Remixing item", maxCompletionTokens: 800 }
     );
 
     const parsed = parseGroqJson<RemixResult>(content, FALLBACK);

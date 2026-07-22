@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { X, Pin, PinOff, Trash2, Plus, Shuffle, Camera, Loader2, ChevronDown, Sparkles, Image as ImageIcon } from "lucide-react";
 import type { ClosetItem, ItemCategory } from "@/lib/types";
-import { JEAN_CUT_OPTIONS, RISE_HEIGHT_OPTIONS, SKIRT_LENGTH_OPTIONS, SHORTS_LENGTH_OPTIONS, NECKLINE_OPTIONS, TOP_SILHOUETTE_OPTIONS, SLEEVE_LENGTH_OPTIONS, SLEEVE_OPTIONS, BACK_STYLE_OPTIONS, SUBCATEGORY_SUGGESTIONS, COLOR_OPTIONS, PATTERN_OPTIONS, WASH_OPTIONS, OUTERWEAR_CLOSURE_OPTIONS, OUTERWEAR_LENGTH_OPTIONS, SHOE_HEEL_OPTIONS, SHOE_TOE_OPTIONS, ACCESSORY_MATERIAL_OPTIONS, JEWELRY_TYPE_OPTIONS, HAT_TYPE_OPTIONS, MAKEUP_FINISH_OPTIONS, makeupTypeOptionsForSubcategory, makeupShadeOptionsForType, KNIT_TYPE_OPTIONS, HOOD_STYLE_OPTIONS, HOOD_POCKET_OPTIONS, SWEATSUIT_FABRIC_OPTIONS, SWEATSUIT_FIT_OPTIONS } from "@/lib/types";
+import { JEAN_CUT_OPTIONS, RISE_HEIGHT_OPTIONS, SKIRT_LENGTH_OPTIONS, SHORTS_LENGTH_OPTIONS, NECKLINE_OPTIONS, TOP_SILHOUETTE_OPTIONS, SLEEVE_LENGTH_OPTIONS, SLEEVE_OPTIONS, BACK_STYLE_OPTIONS, SUBCATEGORY_SUGGESTIONS, COLOR_OPTIONS, PATTERN_OPTIONS, FABRIC_OPTIONS, WASH_OPTIONS, OUTERWEAR_CLOSURE_OPTIONS, OUTERWEAR_LENGTH_OPTIONS, SHOE_HEEL_OPTIONS, SHOE_TOE_OPTIONS, SHOE_MATERIAL_OPTIONS, accessoryMaterialOptionsForSubcategory, JEWELRY_TYPE_OPTIONS, HAT_TYPE_OPTIONS, MAKEUP_FINISH_OPTIONS, makeupTypeOptionsForSubcategory, makeupShadeOptionsForType, makeupFinishAppliesToTypes, KNIT_TYPE_OPTIONS, HOOD_STYLE_OPTIONS, HOOD_POCKET_OPTIONS, GARMENT_FIT_OPTIONS } from "@/lib/types";
 import { CATEGORIES, categoryLabel } from "@/lib/categories";
 import { fileToResizedDataUrl } from "@/lib/image";
 import StylingTipList from "@/components/StylingTipList";
@@ -690,6 +690,16 @@ export default function ItemEditSheet({
                   {renderSubcategoryQuickPicks(
                     SUBCATEGORY_SUGGESTIONS[category] || []
                   )}
+                  {category !== "makeup" ? (
+                    <>
+                      {renderQuickPickRow("Color", "color", COLOR_OPTIONS)}
+                      {renderQuickPickRow("Pattern", "pattern", PATTERN_OPTIONS)}
+                      {category !== "shoes" && category !== "accessory"
+                        ? renderQuickPickRow("Fabric", "fabric", FABRIC_OPTIONS)
+                        : null}
+                    </>
+                  ) : null}
+                  <div className="border-t border-clay-50 -mx-3" />
                   {category === "bottom" ? (
                     <>
                       {!subcategory.toLowerCase().includes("short") &&
@@ -698,8 +708,6 @@ export default function ItemEditSheet({
                         ? renderQuickPickRow("Fit", "fit", JEAN_CUT_OPTIONS)
                         : null}
                       {renderQuickPickRow("Rise", "rise", RISE_HEIGHT_OPTIONS)}
-                      {renderQuickPickRow("Color", "color", COLOR_OPTIONS)}
-                      {renderQuickPickRow("Pattern", "pattern", PATTERN_OPTIONS)}
                       {subcategory.toLowerCase().includes("jean") ||
                       parseQuickPickValues(tags?.color)
                         .some((c) => c.toLowerCase().includes("denim"))
@@ -715,8 +723,6 @@ export default function ItemEditSheet({
                   ) : null}
                   {category === "top" || category === "dress" || category === "set" ? (
                     <>
-                      {renderQuickPickRow("Color", "color", COLOR_OPTIONS)}
-                      {renderQuickPickRow("Pattern", "pattern", PATTERN_OPTIONS)}
                       {renderQuickPickRow("Neckline", "neckline", NECKLINE_OPTIONS)}
                       {renderQuickPickRow(
                         "Silhouette",
@@ -730,7 +736,7 @@ export default function ItemEditSheet({
                       )}
                       {renderQuickPickRow("Sleeve Style", "sleeve", SLEEVE_OPTIONS)}
                       {renderQuickPickRow(
-                        "Back style",
+                        "Back Style",
                         "backStyle",
                         BACK_STYLE_OPTIONS
                       )}
@@ -754,26 +760,17 @@ export default function ItemEditSheet({
                       ) : null}
                       {subcategory.toLowerCase().includes("sweatsuit") ||
                       subcategory.toLowerCase().includes("tracksuit") ||
-                      subcategory.toLowerCase().includes("loungewear") ? (
-                        <>
-                          {renderQuickPickRow(
-                            "Fabric",
-                            "fabric",
-                            SWEATSUIT_FABRIC_OPTIONS
-                          )}
-                          {renderQuickPickRow(
+                      subcategory.toLowerCase().includes("loungewear")
+                        ? renderQuickPickRow(
                             "Fit",
                             "sweatsuitFit",
-                            SWEATSUIT_FIT_OPTIONS
-                          )}
-                        </>
-                      ) : null}
+                            GARMENT_FIT_OPTIONS
+                          )
+                        : null}
                     </>
                   ) : null}
                   {category === "outerwear" ? (
                     <>
-                      {renderQuickPickRow("Color", "color", COLOR_OPTIONS)}
-                      {renderQuickPickRow("Pattern", "pattern", PATTERN_OPTIONS)}
                       {renderQuickPickRow(
                         "Closure",
                         "closure",
@@ -784,18 +781,22 @@ export default function ItemEditSheet({
                         "length",
                         OUTERWEAR_LENGTH_OPTIONS
                       )}
+                      {renderQuickPickRow("Fit", "fit", GARMENT_FIT_OPTIONS)}
                     </>
                   ) : null}
                   {category === "shoes" ? (
                     <>
-                      {renderQuickPickRow("Color", "color", COLOR_OPTIONS)}
-                      {renderQuickPickRow("Pattern", "pattern", PATTERN_OPTIONS)}
                       {renderQuickPickRow(
                         "Heel Height",
                         "heelHeight",
                         SHOE_HEEL_OPTIONS
                       )}
                       {renderQuickPickRow("Toe Shape", "toeShape", SHOE_TOE_OPTIONS)}
+                      {renderQuickPickRow(
+                        "Material",
+                        "material",
+                        SHOE_MATERIAL_OPTIONS
+                      )}
                     </>
                   ) : null}
                   {category === "accessory" ? (
@@ -814,19 +815,17 @@ export default function ItemEditSheet({
                             HAT_TYPE_OPTIONS
                           )
                         : null}
-                      {renderQuickPickRow("Color", "color", COLOR_OPTIONS)}
-                      {renderQuickPickRow("Pattern", "pattern", PATTERN_OPTIONS)}
                       {renderQuickPickRow(
                         "Material",
                         "material",
-                        ACCESSORY_MATERIAL_OPTIONS
+                        accessoryMaterialOptionsForSubcategory(subcategory)
                       )}
                     </>
                   ) : null}
                   {category === "makeup" ? (
                     <>
                       {renderQuickPickRow(
-                        "Makeup type",
+                        "Makeup Type",
                         "makeupType",
                         makeupTypeOptionsForSubcategory(subcategory)
                       )}
@@ -852,20 +851,7 @@ export default function ItemEditSheet({
                         const selectedTypes = parseQuickPickValues(
                           tags?.makeupType
                         );
-                        const finishApplies = selectedTypes.some((t) =>
-                          [
-                            "Foundation",
-                            "Concealer",
-                            "Powder",
-                            "Blush",
-                            "Bronzer",
-                            "Highlighter",
-                            "Eyeshadow",
-                            "Lipstick",
-                            "Lip Gloss",
-                          ].includes(t)
-                        );
-                        if (!finishApplies) return null;
+                        if (!makeupFinishAppliesToTypes(selectedTypes)) return null;
                         return renderQuickPickRow(
                           "Finish",
                           "finish",

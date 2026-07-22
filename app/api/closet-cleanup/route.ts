@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { groqChat, parseGroqJson, buildTextMessage, TEXT_MODEL } from "@/lib/groq";
-import { sanitizeGroqPayload } from "@/lib/groqSanitizer";
+import { sanitizeGroqPayload, formatTagsCompact } from "@/lib/groqSanitizer";
 
 interface NeglectedItem {
   id: string;
@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
           name: i?.name || "",
           tags: i?.tags || {},
         });
-        return `- id:${i.id} | ${safe.category} | ${safe.name} | ${JSON.stringify(safe.tags)} | worn ${
+        return `- id:${i.id} | ${safe.category} | ${safe.name} | ${formatTagsCompact(safe.tags)} | worn ${
           i.timesWorn
         }× | owned ${i.ageDays} days`;
       })
@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
 
     const content = await groqChat(
       [buildTextMessage("system", systemPrompt), buildTextMessage("user", userPrompt)],
-      { model: TEXT_MODEL, jsonMode: true, temperature: 0.5 }
+      { model: TEXT_MODEL, jsonMode: true, temperature: 0.5, label: "Analyzing closet for cleanup", maxCompletionTokens: 2000 }
     );
 
     const parsed = parseGroqJson<{ suggestions: CleanupSuggestion[] }>(content, FALLBACK);

@@ -27,6 +27,7 @@ export default function WishlistPage() {
   const [error, setError] = useState("");
   const [cartAnalysis, setCartAnalysis] = useState<CartAnalysis | null>(null);
   const [cartBusy, setCartBusy] = useState(false);
+  const [failedAnalysisIds, setFailedAnalysisIds] = useState<Set<string>>(new Set());
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -75,27 +76,41 @@ export default function WishlistPage() {
       sourceUrl,
     });
     setItems((prev) => [saved, ...(prev || [])]);
+    await runAnalysis(saved);
+  }
 
-    // Fire the single-item analysis after saving so it doesn't block
-    // the add flow; update the item in place once it resolves.
+  // Separated from tagAndAnalyze so a failed attempt (including being
+  // blocked by the app-wide AI exclusive lock, or a rate limit) can be
+  // retried on its own, without re-tagging the item. Also lets the UI
+  // distinguish "still analyzing" from "failed" instead of both looking
+  // identical (analysis === undefined) and showing "Analyzing..."
+  // forever even after the attempt has already finished and failed.
+  async function runAnalysis(item: WishlistItem) {
+    setFailedAnalysisIds((prev) => {
+      const next = new Set(prev);
+      next.delete(item.id);
+      return next;
+    });
     try {
       const analysisRes = await fetch("/api/analyze-item", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          newItem: { name: saved.name, category: saved.category, tags: saved.tags },
+          newItem: { name: item.name, category: item.category, tags: item.tags },
           closetItems,
           measurements,
         }),
       });
       const analysis = await analysisRes.json().catch(() => null);
       if (analysis && !analysis.error) {
-        const updated = { ...saved, analysis };
+        const updated = { ...item, analysis };
         await wishlistStore.update(updated);
-        setItems((prev) => (prev || []).map((i) => (i.id === saved.id ? updated : i)));
+        setItems((prev) => (prev || []).map((i) => (i.id === item.id ? updated : i)));
+      } else {
+        setFailedAnalysisIds((prev) => new Set(prev).add(item.id));
       }
     } catch {
-      // Analysis failing shouldn't remove the item from the wishlist.
+      setFailedAnalysisIds((prev) => new Set(prev).add(item.id));
     }
   }
 
@@ -299,6 +314,13 @@ export default function WishlistPage() {
                         ) : null}
                       </div>
                     </>
+                  ) : failedAnalysisIds.has(item.id) ? (
+                    <button
+                      onClick={() => runAnalysis(item)}
+                      className="text-xs text-emerald-700 font-medium mt-0.5"
+                    >
+                      Couldn&rsquo;t analyze, tap to retry
+                    </button>
                   ) : (
                     <p className="text-xs text-stone-400 mt-0.5">Analyzing...</p>
                   )}

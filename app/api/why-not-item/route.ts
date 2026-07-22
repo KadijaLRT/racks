@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { groqChat, parseGroqJson, buildTextMessage, TEXT_MODEL } from "@/lib/groq";
-import { sanitizeGroqPayload, sanitizeGroqText } from "@/lib/groqSanitizer";
+import { sanitizeGroqPayload, sanitizeGroqText, formatTagsCompact } from "@/lib/groqSanitizer";
 import type { ClosetItem } from "@/lib/types";
 
 interface CurrentLook {
@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
           name: i?.name || "",
           tags: i?.tags || {},
         });
-        return `- ${safe.category} | ${safe.name} | ${JSON.stringify(safe.tags)}`;
+        return `- ${safe.category} | ${safe.name} | ${formatTagsCompact(safe.tags)}`;
       })
       .join("\n");
 
@@ -69,7 +69,7 @@ Why wasn't this item chosen instead?`;
 
     const content = await groqChat(
       [buildTextMessage("system", systemPrompt), buildTextMessage("user", userPrompt)],
-      { model: TEXT_MODEL, jsonMode: true, temperature: 0.5 }
+      { model: TEXT_MODEL, jsonMode: true, temperature: 0.5, label: "Explaining outfit choice", maxCompletionTokens: 400 }
     );
 
     const parsed = parseGroqJson<{ reason: string }>(content, FALLBACK);

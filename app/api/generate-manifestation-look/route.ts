@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { groqChat, parseGroqJson, buildTextMessage, TEXT_MODEL } from "@/lib/groq";
-import { sanitizeGroqPayload, sanitizeGroqText } from "@/lib/groqSanitizer";
+import { sanitizeGroqPayload, sanitizeGroqText, formatTagsCompact } from "@/lib/groqSanitizer";
 import type { ClosetItem, WigItem, HairProfile, ColorProfile } from "@/lib/types";
 
 const INTENTION_GUIDANCE: Record<string, string> = {
@@ -70,6 +70,41 @@ export async function POST(req: NextRequest) {
     );
     const ownedMakeup = items.filter((i) => i?.category === "makeup");
 
+    if (wearable.length === 0) {
+      return NextResponse.json(
+        {
+          error:
+            "None of your catalogued items are marked clean right now, everything is dirty or at the dry cleaner. Mark something as clean in your closet to manifest a look.",
+        },
+        { status: 400 }
+      );
+    }
+
+    // Same reasoning as generate-look: if the closet genuinely can't
+    // support a full outfit (a dress, a set, or a top+bottom, plus
+    // shoes), the model will legitimately come back empty with no way
+    // to explain why. Check up front and say exactly what's missing.
+    const hasCategory = (cat: string) => wearable.some((i) => i?.category === cat);
+    const canFormOutfit =
+      hasCategory("dress") ||
+      hasCategory("set") ||
+      (hasCategory("top") && hasCategory("bottom"));
+    const hasShoes = hasCategory("shoes");
+
+    if (!canFormOutfit || !hasShoes) {
+      const missing: string[] = [];
+      if (!canFormOutfit) missing.push("a dress, a set, or a top and a bottom");
+      if (!hasShoes) missing.push("shoes");
+      return NextResponse.json(
+        {
+          error: `Your closet doesn't have enough marked-clean items yet to manifest a full look. Add ${missing.join(
+            " and "
+          )} to get started.`,
+        },
+        { status: 400 }
+      );
+    }
+
     const closetList = wearable
       .map((i) => {
         const safe = sanitizeGroqPayload({
@@ -77,21 +112,21 @@ export async function POST(req: NextRequest) {
           name: i?.name || "",
           tags: i?.tags || {},
         });
-        return `- id:${i.id} | ${safe.category} | ${safe.name} | ${JSON.stringify(safe.tags)}`;
+        return `- id:${i.id} | ${safe.category} | ${safe.name} | ${formatTagsCompact(safe.tags)}`;
       })
       .join("\n");
 
     const makeupList = ownedMakeup
       .map((i) => {
         const safe = sanitizeGroqPayload({ name: i?.name || "", tags: i?.tags || {} });
-        return `- id:${i.id} | ${safe.name} | ${JSON.stringify(safe.tags)}`;
+        return `- id:${i.id} | ${safe.name} | ${formatTagsCompact(safe.tags)}`;
       })
       .join("\n");
 
     const wigList = wigs
       .map((w) => {
         const safe = sanitizeGroqPayload({ name: w?.name || "", tags: w?.tags || {} });
-        return `- id:${w.id} | wig | ${safe.name} | ${JSON.stringify(safe.tags)}`;
+        return `- id:${w.id} | wig | ${safe.name} | ${formatTagsCompact(safe.tags)}`;
       })
       .join("\n");
 
@@ -99,7 +134,7 @@ export async function POST(req: NextRequest) {
     if (hairProfile?.mode === "description" && hairProfile?.description) {
       hairContext = `User describes their hair as: "${sanitizeGroqText(hairProfile.description)}"`;
     } else if (hairProfile?.tags) {
-      hairContext = `User's current hair: ${JSON.stringify(sanitizeGroqPayload(hairProfile.tags))}`;
+      hairContext = `User's current hair: ${formatTagsCompact(sanitizeGroqPayload(hairProfile.tags))}`;
     }
 
     const colorContext = colorProfile
@@ -153,7 +188,7 @@ Build a look to manifest ${intention.toLowerCase()}, using ONLY the items above.
 
     const content = await groqChat(
       [buildTextMessage("system", systemPrompt), buildTextMessage("user", userPrompt)],
-      { model: TEXT_MODEL, jsonMode: true, temperature: 0.75 }
+      { model: TEXT_MODEL, jsonMode: true, temperature: 0.75, label: "Generating manifestation look", maxCompletionTokens: 1400 }
     );
 
     const parsed = parseGroqJson<ManifestResult>(content, FALLBACK);

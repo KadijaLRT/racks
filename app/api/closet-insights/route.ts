@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { groqChat, parseGroqJson, buildTextMessage, TEXT_MODEL } from "@/lib/groq";
-import { sanitizeGroqPayload } from "@/lib/groqSanitizer";
+import { sanitizeGroqPayload, formatTagsCompact } from "@/lib/groqSanitizer";
 import type { ClosetItem, GeneratedLook } from "@/lib/types";
 
 interface InsightsBody {
@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
           name: i?.name || "",
           tags: i?.tags || {},
         });
-        return `- ${safe.category} | ${safe.name} | ${JSON.stringify(safe.tags)}`;
+        return `- ${safe.category} | ${safe.name} | ${formatTagsCompact(safe.tags)}`;
       })
       .join("\n");
 
@@ -58,7 +58,7 @@ ${lookList || "(none yet)"}`;
 
     const content = await groqChat(
       [buildTextMessage("system", systemPrompt), buildTextMessage("user", userPrompt)],
-      { model: TEXT_MODEL, jsonMode: true, temperature: 0.4 }
+      { model: TEXT_MODEL, jsonMode: true, temperature: 0.4, label: "Generating closet insights", maxCompletionTokens: 1200 }
     );
 
     const parsed = parseGroqJson<InsightsResult>(content, FALLBACK);

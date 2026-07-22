@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
           image
         ),
       ],
-      { model: VISION_MODEL, jsonMode: true, temperature: 0.4 }
+      { model: VISION_MODEL, jsonMode: true, temperature: 0.4, label: "Analyzing style profile", maxCompletionTokens: 800 }
     );
 
     const parsed = parseGroqJson(content, { keywords: [] as string[] });

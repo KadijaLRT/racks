@@ -50,7 +50,7 @@ This is a lighting-dependent, approximate read, do your best from the single pho
         ),
         buildImageMessage("Analyze this selfie for seasonal color palette.", image),
       ],
-      { model: VISION_MODEL, jsonMode: true, temperature: 0.3 }
+      { model: VISION_MODEL, jsonMode: true, temperature: 0.3, label: "Analyzing color palette", maxCompletionTokens: 600 }
     );
 
     const parsed = parseGroqJson<ColorAnalysis>(content, FALLBACK);

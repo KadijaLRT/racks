@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Camera, Loader2, Plus, Trash2, ArrowLeft } from "lucide-react";
+import { Camera, Loader2, Plus, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import BottomNav from "@/components/BottomNav";
+import HairEditSheet from "@/components/HairEditSheet";
 import { fileToResizedDataUrl } from "@/lib/image";
 import { hairProfileStore, wigStore } from "@/lib/storage";
 import type { HairMode, HairProfile, WigItem } from "@/lib/types";
@@ -22,6 +23,8 @@ export default function HairPage() {
   const [description, setDescription] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [editingWig, setEditingWig] = useState<WigItem | null>(null);
+  const [editingSelfie, setEditingSelfie] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const wigFileRef = useRef<HTMLInputElement>(null);
 
@@ -198,7 +201,10 @@ export default function HairPage() {
         {mode === "selfie" ? (
           <div className="bg-white rounded-2xl p-4 space-y-3">
             {profile?.mode === "selfie" && profile?.image ? (
-              <div className="flex gap-3 items-center">
+              <button
+                onClick={() => setEditingSelfie(true)}
+                className="w-full flex gap-3 items-center text-left"
+              >
                 <div className="w-16 h-16 rounded-xl overflow-hidden bg-cream-100 shrink-0">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
@@ -207,26 +213,30 @@ export default function HairPage() {
                     className="w-full h-full object-cover"
                   />
                 </div>
-                <div>
-                  <p className="text-sm text-stone-700">{profile.name || "Your hair"}</p>
-                  <p className="text-xs text-stone-400">
-                    {Object.values(profile.tags || {}).join(" · ")}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-stone-700">
+                    {profile.name || "Your hair"}
+                  </p>
+                  <p className="text-xs text-stone-400 mt-0.5 truncate">
+                    {Object.values(profile.tags || {}).join(" · ") || "Tap to edit"}
                   </p>
                 </div>
-              </div>
+              </button>
             ) : (
               <p className="text-xs text-stone-500">
                 Add a selfie so outfit suggestions can factor in a realistic hairstyle.
               </p>
             )}
-            <button
-              onClick={() => fileRef.current?.click()}
-              disabled={busy}
-              className="w-full rounded-xl bg-emerald-600 text-cream py-2.5 text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-60"
-            >
-              {busy ? <Loader2 size={16} className="animate-spin" /> : <Camera size={16} />}
-              {profile?.image ? "Update photo" : "Add a photo"}
-            </button>
+            {!profile?.image ? (
+              <button
+                onClick={() => fileRef.current?.click()}
+                disabled={busy}
+                className="w-full rounded-xl bg-emerald-600 text-cream py-2.5 text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-60"
+              >
+                {busy ? <Loader2 size={16} className="animate-spin" /> : <Camera size={16} />}
+                Add a photo
+              </button>
+            ) : null}
           </div>
         ) : null}
 
@@ -261,23 +271,20 @@ export default function HairPage() {
             ) : (
               <div className="grid grid-cols-3 gap-3">
                 {wigs.map((wig) => (
-                  <div key={wig.id} className="relative">
-                    <div className="aspect-square rounded-xl overflow-hidden bg-cream-100">
+                  <div key={wig.id}>
+                    <button
+                      onClick={() => setEditingWig(wig)}
+                      className="block w-full aspect-square rounded-xl overflow-hidden bg-cream-100"
+                      aria-label={`Edit ${wig.name}`}
+                    >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={wig.image}
                         alt={wig.name}
                         className="w-full h-full object-cover"
                       />
-                    </div>
-                    <p className="text-[11px] text-stone-600 mt-1 truncate">{wig.name}</p>
-                    <button
-                      onClick={() => removeWig(wig.id)}
-                      className="absolute top-1 right-1 bg-cream/90 rounded-full p-1"
-                      aria-label={`Remove ${wig.name}`}
-                    >
-                      <Trash2 size={12} className="text-clay-700" />
                     </button>
+                    <p className="text-[11px] text-stone-600 mt-1 truncate">{wig.name}</p>
                   </div>
                 ))}
               </div>
@@ -285,6 +292,54 @@ export default function HairPage() {
           </div>
         ) : null}
       </div>
+
+      {editingWig ? (
+        <HairEditSheet
+          title="Edit wig"
+          image={editingWig.image}
+          name={editingWig.name}
+          tags={editingWig.tags}
+          retagMode="wig"
+          onClose={() => setEditingWig(null)}
+          onSave={async ({ image, name, tags }) => {
+            const updated: WigItem = {
+              ...editingWig,
+              image: image || editingWig.image,
+              name,
+              tags,
+            };
+            await wigStore.update(updated);
+            setWigs((prev) => (prev || []).map((w) => (w.id === updated.id ? updated : w)));
+            setEditingWig(null);
+          }}
+          onDelete={async () => {
+            await removeWig(editingWig.id);
+            setEditingWig(null);
+          }}
+        />
+      ) : null}
+
+      {editingSelfie && profile ? (
+        <HairEditSheet
+          title="Edit your hair"
+          image={profile.image}
+          name={profile.name || ""}
+          tags={profile.tags || {}}
+          retagMode="selfie"
+          onClose={() => setEditingSelfie(false)}
+          onSave={async ({ image, name, tags }) => {
+            const updated: HairProfile = {
+              ...profile,
+              image: image || profile.image,
+              name,
+              tags,
+            };
+            await hairProfileStore.save(updated);
+            setProfile(updated);
+            setEditingSelfie(false);
+          }}
+        />
+      ) : null}
 
       <BottomNav />
     </main>

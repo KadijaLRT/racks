@@ -38,7 +38,7 @@ ${outfitContext ? `They're dressed for: ${outfitContext}` : ""}`;
 
     const content = await groqChat(
       [buildTextMessage("system", systemPrompt), buildTextMessage("user", userPrompt)],
-      { model: TEXT_MODEL, jsonMode: true, temperature: 0.6 }
+      { model: TEXT_MODEL, jsonMode: true, temperature: 0.6, label: "Describing hairstyle", maxCompletionTokens: 600 }
     );
 
     const parsed = parseGroqJson<{ preview: string; stylingSteps: string[] }>(content, {

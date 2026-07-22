@@ -186,12 +186,40 @@ ${wigList || "(none)"}
 
 Build a look to manifest ${intention.toLowerCase()}, using ONLY the items above.`;
 
-    const content = await groqChat(
-      [buildTextMessage("system", systemPrompt), buildTextMessage("user", userPrompt)],
-      { model: TEXT_MODEL, jsonMode: true, temperature: 0.75, label: "Generating manifestation look", maxCompletionTokens: 2200 }
-    );
+    const messages = [
+      buildTextMessage("system", systemPrompt),
+      buildTextMessage("user", userPrompt),
+    ];
+    const callOpts = {
+      model: TEXT_MODEL,
+      jsonMode: true,
+      temperature: 0.75,
+      label: "Generating manifestation look",
+      maxCompletionTokens: 2200,
+    };
 
-    const parsed = parseGroqJson<ManifestResult>(content, FALLBACK);
+    let content = await groqChat(messages, callOpts);
+    let parsed = parseGroqJson<ManifestResult>(content, FALLBACK);
+
+    // Same reasoning as generate-look: category coverage was already
+    // confirmed above, so an empty itemIds here means the model didn't
+    // commit, not that it's impossible. One retry resolves this most
+    // of the time.
+    if (!Array.isArray(parsed.itemIds) || parsed.itemIds.length === 0) {
+      content = await groqChat(messages, { ...callOpts, temperature: 0.85 });
+      parsed = parseGroqJson<ManifestResult>(content, FALLBACK);
+    }
+
+    if (!Array.isArray(parsed.itemIds) || parsed.itemIds.length === 0) {
+      return NextResponse.json(
+        {
+          error:
+            "The AI had your closet items available but couldn't settle on a combination this time. Try again, or a different intention.",
+        },
+        { status: 502 }
+      );
+    }
+
     return NextResponse.json({
       itemIds: parsed.itemIds || [],
       hairstyle: parsed.hairstyle || "",

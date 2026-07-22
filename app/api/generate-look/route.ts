@@ -260,12 +260,44 @@ ${wigList || "(none)"}
 
 ${refinementContext ? "Apply the requested change to the existing look." : "Build the best possible look using ONLY the items above."}`;
 
-    const content = await groqChat(
-      [buildTextMessage("system", systemPrompt), buildTextMessage("user", userPrompt)],
-      { model: TEXT_MODEL, jsonMode: true, temperature: 0.6, label: "Generating a look", maxCompletionTokens: 2200 }
-    );
+    const messages = [
+      buildTextMessage("system", systemPrompt),
+      buildTextMessage("user", userPrompt),
+    ];
+    const callOpts = {
+      model: TEXT_MODEL,
+      jsonMode: true,
+      temperature: 0.6,
+      label: "Generating a look",
+      maxCompletionTokens: 2200,
+    };
 
-    const parsed = parseGroqJson<GeneratedLookResponse>(content, FALLBACK_LOOK);
+    let content = await groqChat(messages, callOpts);
+    let parsed = parseGroqJson<GeneratedLookResponse>(content, FALLBACK_LOOK);
+
+    // We've already confirmed above that the closet has enough clean,
+    // categorized items to physically build an outfit, so an empty
+    // itemIds here means the model failed to commit to a combination
+    // (or its JSON was truncated short of the itemIds field on a large
+    // closet list), not that it's impossible. One retry at a slightly
+    // higher temperature resolves this most of the time; if it's still
+    // empty after that, say so plainly instead of returning an empty
+    // array that the frontend can only describe generically.
+    if (!Array.isArray(parsed.itemIds) || parsed.itemIds.length === 0) {
+      content = await groqChat(messages, { ...callOpts, temperature: 0.75 });
+      parsed = parseGroqJson<GeneratedLookResponse>(content, FALLBACK_LOOK);
+    }
+
+    if (!Array.isArray(parsed.itemIds) || parsed.itemIds.length === 0) {
+      return NextResponse.json(
+        {
+          error:
+            "The AI had your closet items available but couldn't settle on a combination this time. Try rephrasing the occasion, or generate again.",
+        },
+        { status: 502 }
+      );
+    }
+
     return NextResponse.json({
       itemIds: parsed.itemIds || [],
       hairstyle: parsed.hairstyle || "",

@@ -109,6 +109,16 @@ async function callGroq(
       // on a reasoning model for a small task.
       max_completion_tokens: opts.maxCompletionTokens ?? (opts.jsonMode ? 1536 : 1024),
       ...(opts.jsonMode ? { response_format: { type: "json_object" } } : {}),
+      // gpt-oss-120b/20b and qwen3.6-27b are reasoning models: left
+      // unset, they can spend a real chunk of max_completion_tokens on
+      // internal reasoning before ever writing the actual JSON answer,
+      // which is exactly how a structured-output task (pick items from
+      // a list, return a fixed shape) can come back empty under token
+      // pressure even though the task itself is simple. Forcing low
+      // effort for jsonMode calls keeps that budget going to the
+      // answer instead, since none of these tasks need deep reasoning,
+      // they need a constrained selection.
+      ...(opts.jsonMode ? { reasoning_effort: "low" } : {}),
     }),
   });
 }

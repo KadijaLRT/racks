@@ -161,7 +161,7 @@ export default function CleanupPage() {
                       <div className="mb-2">
                         <button
                           onClick={() => setStatus(item, suggestion.action)}
-                          className="text-xs bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-full font-medium"
+                          className="text-xs bg-emerald-50 text-emerald-700 px-3 py-2 rounded-full font-medium min-h-[36px]"
                         >
                           Suggested: {suggestion.action}
                         </button>
@@ -169,12 +169,12 @@ export default function CleanupPage() {
                       </div>
                     ) : null}
 
-                    <div className="flex flex-wrap gap-1.5">
+                    <div className="flex flex-wrap gap-2">
                       {STATUS_OPTIONS.map((opt) => (
                         <button
                           key={opt.value}
                           onClick={() => setStatus(item, opt.value)}
-                          className="px-2.5 py-1 rounded-full bg-cream-100 text-xs text-stone-500"
+                          className="px-3 py-2 rounded-full bg-cream-100 text-xs text-stone-500 min-h-[36px]"
                         >
                           {opt.label}
                         </button>

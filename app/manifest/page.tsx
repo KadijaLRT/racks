@@ -159,12 +159,12 @@ export default function ManifestPage() {
         <div className="bg-white rounded-2xl p-4 space-y-4">
           <div>
             <p className="text-xs text-stone-500 mb-1.5">What are you calling in?</p>
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap gap-2">
               {INTENTIONS.map((i) => (
                 <button
                   key={i}
                   onClick={() => setIntention(i)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-medium ${
+                  className={`px-3 py-2 rounded-full text-xs font-medium min-h-[36px] ${
                     intention === i
                       ? "bg-emerald-600 text-cream"
                       : "bg-cream-100 text-stone-500"
@@ -178,12 +178,12 @@ export default function ManifestPage() {
 
           <div>
             <p className="text-xs text-stone-500 mb-1.5">Your sign (optional)</p>
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap gap-2">
               {ZODIAC_SIGNS.map((z) => (
                 <button
                   key={z}
                   onClick={() => setZodiacSign(zodiacSign === z ? null : z)}
-                  className={`px-2.5 py-1 rounded-full text-[11px] ${
+                  className={`px-3 py-2 rounded-full text-xs min-h-[36px] ${
                     zodiacSign === z
                       ? "bg-clay-500 text-cream"
                       : "bg-cream-100 text-stone-500"

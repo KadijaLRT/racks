@@ -93,6 +93,7 @@ export default function BulkImportSheet({
     const toSave = detected.filter((i) => i.selected);
     if (toSave.length === 0) return;
     setSaving(true);
+    setError("");
     try {
       const saved = await Promise.all(
         toSave.map((item) =>
@@ -125,6 +126,14 @@ export default function BulkImportSheet({
         )
       );
       onImported(saved);
+    } catch (err) {
+      // Previously unhandled: if any item in this batch failed to save
+      // (e.g. IndexedDB storage quota exceeded partway through), the
+      // whole Promise.all would reject with no visible feedback at
+      // all, saving would silently stop with the sheet still open.
+      setError(
+        err instanceof Error ? err.message : "Couldn't save these items."
+      );
     } finally {
       setSaving(false);
     }

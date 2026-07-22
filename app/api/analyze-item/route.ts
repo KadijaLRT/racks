@@ -75,6 +75,7 @@ export async function POST(req: NextRequest) {
     if (measurements?.topSize) sizeParts.push(`top size ${measurements.topSize}`);
     if (measurements?.bottomSize) sizeParts.push(`bottom size ${measurements.bottomSize}`);
     if (measurements?.dressSize) sizeParts.push(`dress size ${measurements.dressSize}`);
+    if (measurements?.setSize) sizeParts.push(`set size ${measurements.setSize}`);
     if (measurements?.braSize) sizeParts.push(`bra size ${measurements.braSize}`);
     if (measurements?.shoeSize) sizeParts.push(`shoe size ${measurements.shoeSize}`);
     if (measurements?.height) sizeParts.push(`height ${measurements.height}`);

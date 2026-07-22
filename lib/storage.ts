@@ -20,6 +20,30 @@ function makeId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+/**
+ * Turns a raw IndexedDB/idb-keyval failure into a message worth showing
+ * a person, distinguishing the most likely real-world cause (storage
+ * quota exceeded from accumulated photos, especially on iOS Safari
+ * where the quota is tighter than desktop browsers) from anything else,
+ * rather than leaving a save silently fail or surfacing a cryptic
+ * browser error like "QuotaExceededError: The quota has been exceeded."
+ */
+function describeStorageError(err: unknown): string {
+  const name = err instanceof DOMException ? err.name : "";
+  const message = err instanceof Error ? err.message : String(err);
+  if (
+    name === "QuotaExceededError" ||
+    /quota/i.test(message) ||
+    /exceeded/i.test(message)
+  ) {
+    return "Your device's storage for this app is full, likely from accumulated item photos. Free up space by deleting a few older items, or back up and clear data in Settings.";
+  }
+  if (name === "InvalidStateError" || /closing|closed/i.test(message)) {
+    return "Local storage is temporarily unavailable (this can happen in private/incognito browsing). Try again in a regular browser tab.";
+  }
+  return `Couldn't save that (${message || "unknown storage error"}). Try again, or check available device storage.`;
+}
+
 const PREFIX = {
   closet: "closet:",
   wig: "wig:",
@@ -75,7 +99,11 @@ function createCollection<
         id: makeId(),
         [timestampField]: Date.now(),
       } as unknown as T;
-      await set(prefix + full.id, full);
+      try {
+        await set(prefix + full.id, full);
+      } catch (err) {
+        throw new Error(describeStorageError(err));
+      }
       return full;
     },
 
@@ -104,7 +132,11 @@ function createCollection<
     },
 
     async update(item: T): Promise<void> {
-      await set(prefix + item.id, item);
+      try {
+        await set(prefix + item.id, item);
+      } catch (err) {
+        throw new Error(describeStorageError(err));
+      }
     },
 
     async remove(id: string): Promise<void> {

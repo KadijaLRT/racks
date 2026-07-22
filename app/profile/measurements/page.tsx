@@ -17,6 +17,7 @@ const FIELDS: Array<{
   { key: "topSize", label: "Top size", placeholder: "e.g. M, or 8" },
   { key: "bottomSize", label: "Bottom size", placeholder: "e.g. 29, or M" },
   { key: "dressSize", label: "Dress size", placeholder: "e.g. 6, or S" },
+  { key: "setSize", label: "Set size", placeholder: "e.g. M, or 8" },
   { key: "shoeSize", label: "Shoe size", placeholder: "e.g. 8.5 US" },
 ];
 

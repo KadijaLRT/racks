@@ -691,6 +691,7 @@ export interface UserMeasurements {
   topSize?: string;
   bottomSize?: string;
   dressSize?: string;
+  setSize?: string;
   shoeSize?: string;
   notes?: string;
   updatedAt: number;

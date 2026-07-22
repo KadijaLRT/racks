@@ -18,7 +18,7 @@ import {
 interface ItemEditSheetProps {
   item: ClosetItem;
   onClose: () => void;
-  onSave: (item: ClosetItem) => void;
+  onSave: (item: ClosetItem) => void | Promise<void>;
   onDelete: (id: string) => void;
   onRemix?: (item: ClosetItem) => void;
 }
@@ -119,6 +119,8 @@ export default function ItemEditSheet({
   const [quickPicksOpen, setQuickPicksOpen] = useState(false);
   const [styleGuideOpen, setStyleGuideOpen] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const [backImage, setBackImage] = useState<string | undefined>(item?.backImage);
   const [analyzingBack, setAnalyzingBack] = useState(false);
   const [backError, setBackError] = useState("");
@@ -259,21 +261,36 @@ export default function ItemEditSheet({
     setBackError("");
   }
 
-  function handleSave() {
-    onSave({
-      ...item,
-      name: effectiveName.trim() || "Untitled item",
-      category,
-      subcategory: subcategory.trim() || undefined,
-      tags: tags || {},
-      notes: notes.trim() || undefined,
-      laundryStatus,
-      closetStatus,
-      pinned,
-      image: image || item.image,
-      backImage: backImage || undefined,
-      timesWorn: wornCount,
-    });
+  async function handleSave() {
+    setSaving(true);
+    setSaveError("");
+    try {
+      await onSave({
+        ...item,
+        name: effectiveName.trim() || "Untitled item",
+        category,
+        subcategory: subcategory.trim() || undefined,
+        tags: tags || {},
+        notes: notes.trim() || undefined,
+        laundryStatus,
+        closetStatus,
+        pinned,
+        image: image || item.image,
+        backImage: backImage || undefined,
+        timesWorn: wornCount,
+      });
+    } catch (err) {
+      // Previously unhandled: a failed save here (e.g. IndexedDB
+      // storage quota exceeded) would silently do nothing, since this
+      // sheet is a full-screen overlay, an error banner on the page
+      // underneath would be completely invisible. Show it right here
+      // instead, next to the button the person just tapped.
+      setSaveError(
+        err instanceof Error ? err.message : "Couldn't save that item."
+      );
+    } finally {
+      setSaving(false);
+    }
   }
 
   // Logs a wear immediately, independent of the AI Looks/Manifest flows
@@ -290,27 +307,34 @@ export default function ItemEditSheet({
   // a wear from an earlier day. Saves right away rather than waiting
   // for "Save changes", since logging a wear is its own action, not a
   // pending edit the person might discard.
-  function handleMarkWorn(date: string) {
+  async function handleMarkWorn(date: string) {
     const next = wornCount + 1;
     const nextHistory = [...wearHistory, date].sort();
-    setWornCount(next);
-    setWearHistory(nextHistory);
-    setWearDatePickerOpen(false);
-    onSave({
-      ...item,
-      name: effectiveName.trim() || "Untitled item",
-      category,
-      subcategory: subcategory.trim() || undefined,
-      tags: tags || {},
-      notes: notes.trim() || undefined,
-      laundryStatus,
-      closetStatus,
-      pinned,
-      image: image || item.image,
-      backImage: backImage || undefined,
-      timesWorn: next,
-      wearHistory: nextHistory,
-    });
+    setSaveError("");
+    try {
+      await onSave({
+        ...item,
+        name: effectiveName.trim() || "Untitled item",
+        category,
+        subcategory: subcategory.trim() || undefined,
+        tags: tags || {},
+        notes: notes.trim() || undefined,
+        laundryStatus,
+        closetStatus,
+        pinned,
+        image: image || item.image,
+        backImage: backImage || undefined,
+        timesWorn: next,
+        wearHistory: nextHistory,
+      });
+      setWornCount(next);
+      setWearHistory(nextHistory);
+      setWearDatePickerOpen(false);
+    } catch (err) {
+      setSaveError(
+        err instanceof Error ? err.message : "Couldn't log that wear."
+      );
+    }
   }
 
   function addTag() {
@@ -401,14 +425,14 @@ export default function ItemEditSheet({
     const selectedValues = parseQuickPickValues(tags?.[tagKey]);
     return (
       <div>
-        <p className="text-[11px] text-stone-400 mb-1">{label}</p>
-        <div className="flex flex-wrap gap-1.5">
+        <p className="text-[11px] text-stone-400 mb-1.5">{label}</p>
+        <div className="flex flex-wrap gap-2">
           {options.map((opt) => (
             <button
               key={opt}
               type="button"
               onClick={() => toggleQuickTag(tagKey, opt)}
-              className={`px-2.5 py-1 rounded-full text-[11px] ${
+              className={`px-3 py-2 rounded-full text-xs min-h-[36px] ${
                 selectedValues.includes(opt)
                   ? "bg-emerald-600 text-cream"
                   : "bg-cream-100 text-stone-500"
@@ -429,8 +453,8 @@ export default function ItemEditSheet({
     if (!options || options.length === 0) return null;
     return (
       <div>
-        <p className="text-[11px] text-stone-400 mb-1">Subcategory</p>
-        <div className="flex flex-wrap gap-1.5">
+        <p className="text-[11px] text-stone-400 mb-1.5">Subcategory</p>
+        <div className="flex flex-wrap gap-2">
           {options.map((opt) => (
             <button
               key={opt}
@@ -438,7 +462,7 @@ export default function ItemEditSheet({
               onClick={() =>
                 setSubcategory((prev) => (prev === opt ? "" : opt))
               }
-              className={`px-2.5 py-1 rounded-full text-[11px] capitalize ${
+              className={`px-3 py-2 rounded-full text-xs min-h-[36px] capitalize ${
                 subcategory === opt
                   ? "bg-emerald-600 text-cream"
                   : "bg-cream-100 text-stone-500"
@@ -1053,39 +1077,46 @@ export default function ItemEditSheet({
           </div>
         </div>
 
-        <div className="px-5 py-4 border-t border-clay-100 flex gap-3">
-          {confirmingDelete ? (
-            <>
-              <button
-                onClick={() => setConfirmingDelete(false)}
-                className="flex-1 rounded-xl border border-clay-200 py-2.5 text-sm text-stone-600"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => onDelete(item.id)}
-                className="flex-1 rounded-xl bg-clay-700 text-cream py-2.5 text-sm font-medium"
-              >
-                Confirm delete
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                onClick={() => setConfirmingDelete(true)}
-                className="rounded-xl border border-clay-200 px-4 py-2.5 text-sm text-clay-700"
-                aria-label="Delete item"
-              >
-                <Trash2 size={16} />
-              </button>
-              <button
-                onClick={handleSave}
-                className="flex-1 rounded-xl bg-emerald-600 text-cream py-2.5 text-sm font-medium active:scale-[0.98] transition-transform"
-              >
-                Save changes
-              </button>
-            </>
-          )}
+        <div className="px-5 py-4 border-t border-clay-100 space-y-2">
+          {saveError ? (
+            <p className="text-xs text-clay-700">{saveError}</p>
+          ) : null}
+          <div className="flex gap-3">
+            {confirmingDelete ? (
+              <>
+                <button
+                  onClick={() => setConfirmingDelete(false)}
+                  className="flex-1 rounded-xl border border-clay-200 py-2.5 text-sm text-stone-600"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => onDelete(item.id)}
+                  className="flex-1 rounded-xl bg-clay-700 text-cream py-2.5 text-sm font-medium"
+                >
+                  Confirm delete
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => setConfirmingDelete(true)}
+                  className="rounded-xl border border-clay-200 px-4 py-2.5 text-sm text-clay-700"
+                  aria-label="Delete item"
+                >
+                  <Trash2 size={16} />
+                </button>
+                <button
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="flex-1 rounded-xl bg-emerald-600 text-cream py-2.5 text-sm font-medium active:scale-[0.98] transition-transform disabled:opacity-60 flex items-center justify-center gap-2"
+                >
+                  {saving ? <Loader2 size={16} className="animate-spin" /> : null}
+                  {saving ? "Saving..." : "Save changes"}
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </div>
 

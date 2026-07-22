@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
 
     const content = await groqChat(
       [buildTextMessage("system", systemPrompt), buildTextMessage("user", userPrompt)],
-      { model: TEXT_MODEL, jsonMode: true, temperature: 0.5, label: "Analyzing closet for cleanup", maxCompletionTokens: 2000 }
+      { model: TEXT_MODEL, jsonMode: true, temperature: 0.5, label: "Analyzing closet for cleanup", maxCompletionTokens: 2600 }
     );
 
     const parsed = parseGroqJson<{ suggestions: CleanupSuggestion[] }>(content, FALLBACK);

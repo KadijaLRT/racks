@@ -262,7 +262,7 @@ ${refinementContext ? "Apply the requested change to the existing look." : "Buil
 
     const content = await groqChat(
       [buildTextMessage("system", systemPrompt), buildTextMessage("user", userPrompt)],
-      { model: TEXT_MODEL, jsonMode: true, temperature: 0.6, label: "Generating a look", maxCompletionTokens: 1200 }
+      { model: TEXT_MODEL, jsonMode: true, temperature: 0.6, label: "Generating a look", maxCompletionTokens: 2200 }
     );
 
     const parsed = parseGroqJson<GeneratedLookResponse>(content, FALLBACK_LOOK);

@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { X, Pin, PinOff, Trash2, Plus, Shuffle, Camera, Loader2, ChevronDown, Sparkles, Image as ImageIcon } from "lucide-react";
 import type { ClosetItem, ItemCategory } from "@/lib/types";
 import { buildLocalItemName } from "@/lib/localNaming";
-import { JEAN_CUT_OPTIONS, RISE_HEIGHT_OPTIONS, SKIRT_LENGTH_OPTIONS, SHORTS_LENGTH_OPTIONS, NECKLINE_OPTIONS, TOP_SILHOUETTE_OPTIONS, SLEEVE_LENGTH_OPTIONS, SLEEVE_OPTIONS, BACK_STYLE_OPTIONS, SUBCATEGORY_SUGGESTIONS, COLOR_OPTIONS, PATTERN_OPTIONS, FABRIC_OPTIONS, WASH_OPTIONS, OUTERWEAR_CLOSURE_OPTIONS, OUTERWEAR_LENGTH_OPTIONS, SHOE_HEEL_OPTIONS, SHOE_TOE_OPTIONS, SHOE_MATERIAL_OPTIONS, accessoryMaterialOptionsForSubcategory, JEWELRY_TYPE_OPTIONS, HAT_TYPE_OPTIONS, MAKEUP_FINISH_OPTIONS, makeupTypeOptionsForSubcategory, makeupShadeOptionsForType, makeupFinishAppliesToTypes, KNIT_TYPE_OPTIONS, HOOD_STYLE_OPTIONS, HOOD_POCKET_OPTIONS, GARMENT_FIT_OPTIONS } from "@/lib/types";
+import { JEAN_CUT_OPTIONS, RISE_HEIGHT_OPTIONS, SKIRT_LENGTH_OPTIONS, SHORTS_LENGTH_OPTIONS, NECKLINE_OPTIONS, TOP_SILHOUETTE_OPTIONS, DRESS_SILHOUETTE_OPTIONS, SLEEVE_LENGTH_OPTIONS, SLEEVE_OPTIONS, BACK_STYLE_OPTIONS, SUBCATEGORY_SUGGESTIONS, COLOR_OPTIONS, PATTERN_OPTIONS, FABRIC_OPTIONS, WASH_OPTIONS, OUTERWEAR_CLOSURE_OPTIONS, OUTERWEAR_LENGTH_OPTIONS, SHOE_HEEL_OPTIONS, SHOE_TOE_OPTIONS, SHOE_MATERIAL_OPTIONS, accessoryMaterialOptionsForSubcategory, JEWELRY_TYPE_OPTIONS, EARRING_TYPE_OPTIONS, BAG_SIZE_OPTIONS, HAT_TYPE_OPTIONS, MAKEUP_FINISH_OPTIONS, makeupTypeOptionsForSubcategory, makeupShadeOptionsForType, makeupFinishAppliesToTypes, KNIT_TYPE_OPTIONS, HOOD_STYLE_OPTIONS, HOOD_POCKET_OPTIONS, GARMENT_FIT_OPTIONS, SWIMSUIT_TYPE_OPTIONS, SWIMSUIT_TOP_STYLE_OPTIONS, SWIMSUIT_BOTTOM_STYLE_OPTIONS } from "@/lib/types";
 import { CATEGORIES, categoryLabel } from "@/lib/categories";
 import { fileToResizedDataUrl } from "@/lib/image";
 import StylingTipList from "@/components/StylingTipList";
@@ -757,6 +757,9 @@ export default function ItemEditSheet({
                             HAT_TYPE_OPTIONS
                           )
                         : null}
+                      {subcategory.toLowerCase().includes("bag")
+                        ? renderQuickPickRow("Size", "size", BAG_SIZE_OPTIONS)
+                        : null}
                       {renderQuickPickRow(
                         "Material",
                         "material",
@@ -785,7 +788,46 @@ export default function ItemEditSheet({
                         : null}
                     </>
                   ) : null}
-                  {category === "top" || category === "dress" || category === "set" ? (
+                  {(category === "top" || category === "dress" || category === "set") &&
+                  subcategory.toLowerCase().includes("bathing suit") ? (
+                    // Swimwear needs its own vocabulary entirely, none of
+                    // the usual garment attributes (sleeve length, knit
+                    // type, etc.) apply to it.
+                    <>
+                      {renderQuickPickRow(
+                        "Swimsuit Type",
+                        "swimsuitType",
+                        SWIMSUIT_TYPE_OPTIONS
+                      )}
+                      {renderQuickPickRow(
+                        "Top Style",
+                        "swimsuitTop",
+                        SWIMSUIT_TOP_STYLE_OPTIONS
+                      )}
+                      {renderQuickPickRow(
+                        "Bottom Style",
+                        "swimsuitBottom",
+                        SWIMSUIT_BOTTOM_STYLE_OPTIONS
+                      )}
+                      {renderQuickPickRow(
+                        "Back Style",
+                        "backStyle",
+                        BACK_STYLE_OPTIONS
+                      )}
+                    </>
+                  ) : category === "set" &&
+                    subcategory.toLowerCase().includes("jewelry set") ? (
+                    // A jewelry set is a matching group of pieces, not a
+                    // garment, so it gets the same Jewelry Type picker as
+                    // an individual jewelry accessory (multi-select, so
+                    // "Necklace, Earrings, Bracelet" can all be marked as
+                    // part of the set) instead of garment attributes.
+                    renderQuickPickRow(
+                      "Jewelry Type",
+                      "jewelryType",
+                      JEWELRY_TYPE_OPTIONS
+                    )
+                  ) : category === "top" || category === "dress" || category === "set" ? (
                     <>
                       {renderQuickPickRow("Neckline", "neckline", NECKLINE_OPTIONS)}
                       {renderQuickPickRow(
@@ -793,6 +835,13 @@ export default function ItemEditSheet({
                         "silhouette",
                         TOP_SILHOUETTE_OPTIONS
                       )}
+                      {category === "dress"
+                        ? renderQuickPickRow(
+                            "Dress Silhouette",
+                            "dressSilhouette",
+                            DRESS_SILHOUETTE_OPTIONS
+                          )
+                        : null}
                       {renderQuickPickRow(
                         "Sleeve Length",
                         "sleeveLength",
@@ -850,12 +899,24 @@ export default function ItemEditSheet({
                   ) : null}
                   {category === "shoes" ? (
                     <>
-                      {renderQuickPickRow(
-                        "Heel Height",
-                        "heelHeight",
-                        SHOE_HEEL_OPTIONS
-                      )}
-                      {renderQuickPickRow("Toe Shape", "toeShape", SHOE_TOE_OPTIONS)}
+                      {subcategory.toLowerCase().includes("heel") ||
+                      subcategory.toLowerCase().includes("boot") ||
+                      subcategory.toLowerCase().includes("sandal")
+                        ? renderQuickPickRow(
+                            "Heel Height",
+                            "heelHeight",
+                            SHOE_HEEL_OPTIONS
+                          )
+                        : null}
+                      {subcategory.toLowerCase().includes("heel") ||
+                      subcategory.toLowerCase().includes("boot") ||
+                      subcategory.toLowerCase().includes("flat")
+                        ? renderQuickPickRow(
+                            "Toe Shape",
+                            "toeShape",
+                            SHOE_TOE_OPTIONS
+                          )
+                        : null}
                       {renderQuickPickRow(
                         "Material",
                         "material",
@@ -905,7 +966,13 @@ export default function ItemEditSheet({
                     <>
                       <div className="border-t border-clay-50 -mx-3" />
                       {renderQuickPickRow("Color", "color", COLOR_OPTIONS)}
-                      {renderQuickPickRow("Pattern", "pattern", PATTERN_OPTIONS)}
+                      {parseQuickPickValues(tags?.jewelryType).includes("Earrings")
+                        ? renderQuickPickRow(
+                            "Earring Type",
+                            "earringType",
+                            EARRING_TYPE_OPTIONS
+                          )
+                        : renderQuickPickRow("Pattern", "pattern", PATTERN_OPTIONS)}
                       {category !== "shoes" && category !== "accessory"
                         ? renderQuickPickRow("Fabric", "fabric", FABRIC_OPTIONS)
                         : null}

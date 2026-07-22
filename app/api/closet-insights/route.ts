@@ -58,7 +58,7 @@ ${lookList || "(none yet)"}`;
 
     const content = await groqChat(
       [buildTextMessage("system", systemPrompt), buildTextMessage("user", userPrompt)],
-      { model: TEXT_MODEL, jsonMode: true, temperature: 0.4, label: "Generating closet insights", maxCompletionTokens: 1200 }
+      { model: TEXT_MODEL, jsonMode: true, temperature: 0.4, label: "Generating closet insights", maxCompletionTokens: 1800 }
     );
 
     const parsed = parseGroqJson<InsightsResult>(content, FALLBACK);

@@ -27,7 +27,7 @@ export const SUBCATEGORY_SUGGESTIONS: Record<ItemCategory, string[]> = {
   ],
   bottom: ["jeans", "trousers", "shorts", "skirt", "leggings", "skort"],
   dress: ["mini", "midi", "maxi", "gown"],
-  set: ["matching set", "jumpsuit", "romper", "bathing suit", "sweatsuit", "tracksuit", "loungewear"],
+  set: ["matching set", "jumpsuit", "romper", "bathing suit", "sweatsuit", "tracksuit", "loungewear", "jewelry set"],
   outerwear: ["jacket", "coat", "blazer", "cardigan", "vest"],
   shoes: ["sneakers", "heels", "boots", "flats", "sandals"],
   accessory: [
@@ -149,6 +149,24 @@ export const TOP_SILHOUETTE_OPTIONS = [
   "Smocked / Shirred",
   "Ruched",
   "Bodysuit",
+];
+
+// Dress silhouette is genuinely distinct vocabulary from top silhouette
+// (nobody describes a dress as a "Camisole" or a "Bodysuit" silhouette),
+// so dresses get their own dedicated list instead of reusing
+// TOP_SILHOUETTE_OPTIONS, shown alongside it for category === "dress".
+export const DRESS_SILHOUETTE_OPTIONS = [
+  "A-Line",
+  "Sheath",
+  "Fit & Flare",
+  "Ball Gown",
+  "Empire Waist",
+  "Mermaid",
+  "Shift",
+  "Slip Dress",
+  "Wrap Dress",
+  "Shirt Dress",
+  "Tea Dress",
 ];
 
 // Shown only when the subcategory suggests a sweater, since knit type
@@ -369,7 +387,57 @@ export const JEWELRY_TYPE_OPTIONS = [
   "Anklet",
   "Brooch",
   "Body Chain",
+  "Nose Ring",
   "Hair Jewelry",
+];
+
+// Shown only when Jewelry Type includes "Earrings", replacing the
+// generic Pattern quick-pick, since a pattern (Striped, Floral, etc.)
+// doesn't describe earrings, an earring style does.
+export const EARRING_TYPE_OPTIONS = [
+  "Stud",
+  "Drop",
+  "Dangle",
+  "Hoop",
+  "Huggie",
+  "Chandelier",
+  "Ear Cuff",
+  "Climber",
+  "Threader",
+  "Jacket",
+];
+
+// Shown only when the accessory subcategory is a bag.
+export const BAG_SIZE_OPTIONS = ["Mini", "Small", "Medium", "Large", "Oversized"];
+
+// Shown only when the set subcategory is a bathing suit, replacing the
+// generic top/dress/set attribute rows (Sleeve Length, Sleeve Style,
+// Knit Type, etc. don't apply to swimwear).
+export const SWIMSUIT_TYPE_OPTIONS = [
+  "One-Piece",
+  "Bikini",
+  "Tankini",
+  "Monokini",
+  "Rash Guard Set",
+];
+
+export const SWIMSUIT_TOP_STYLE_OPTIONS = [
+  "Triangle",
+  "Bandeau",
+  "Halter",
+  "Underwire",
+  "Bralette",
+  "One-Shoulder",
+  "High-Neck",
+];
+
+export const SWIMSUIT_BOTTOM_STYLE_OPTIONS = [
+  "High-Waisted",
+  "Cheeky",
+  "Full Coverage",
+  "Boyshort",
+  "Thong",
+  "Side-Tie",
 ];
 
 // Shown only when the accessory subcategory is a hat, since these
@@ -531,6 +599,7 @@ export const PATTERN_OPTIONS = [
   "Geometric",
   "Color Block",
   "Checkered",
+  "Graphic",
 ];
 
 // Curated color quick-picks, universal across categories. Deliberately

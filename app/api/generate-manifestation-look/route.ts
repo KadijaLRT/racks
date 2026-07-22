@@ -188,7 +188,7 @@ Build a look to manifest ${intention.toLowerCase()}, using ONLY the items above.
 
     const content = await groqChat(
       [buildTextMessage("system", systemPrompt), buildTextMessage("user", userPrompt)],
-      { model: TEXT_MODEL, jsonMode: true, temperature: 0.75, label: "Generating manifestation look", maxCompletionTokens: 1400 }
+      { model: TEXT_MODEL, jsonMode: true, temperature: 0.75, label: "Generating manifestation look", maxCompletionTokens: 2200 }
     );
 
     const parsed = parseGroqJson<ManifestResult>(content, FALLBACK);

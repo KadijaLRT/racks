@@ -163,12 +163,18 @@ function metalToneOf(item: ClosetItem): "gold" | "silver" | null {
 
 export function buildLocalLook(
   items: ClosetItem[],
-  occasion?: string
+  occasion?: string,
+  context?: string[]
 ): LocalLookResult | null {
   const wearable = (items || []).filter(
     (i) => i?.laundryStatus === "clean" && i?.category !== "makeup"
   );
   if (wearable.length === 0) return null;
+
+  const contextText = (context || []).join(" ").toLowerCase();
+  const avoidOpenToe = /chilly|rain/.test(contextText);
+  const preferComfortShoes = /walking|chilly|rain/.test(contextText);
+  const forceOuterwear = /chilly|rain/.test(contextText);
 
   const targetBand = occasionToFormalityBand(occasion);
 
@@ -259,15 +265,37 @@ export function buildLocalLook(
     }
   }
 
-  const shoe = weightedPick(shoes);
+  // Weather context can rule out open-toe shoes (chilly/rainy) and
+  // prefer flat/low-heel options (all-day walking, chilly, rainy),
+  // with a graceful fallback to the unfiltered pool if that would
+  // leave nothing to choose from.
+  let shoeCandidates = shoes;
+  if (avoidOpenToe) {
+    const closedToe = shoeCandidates.filter((s) => {
+      const text = [s.subcategory, ...Object.values(s.tags || {})].join(" ").toLowerCase();
+      return !/sandal|flip flop|slide|open toe|peep toe/.test(text);
+    });
+    if (closedToe.length > 0) shoeCandidates = closedToe;
+  }
+  if (preferComfortShoes) {
+    const comfortable = shoeCandidates.filter((s) => {
+      const text = [s.subcategory, ...Object.values(s.tags || {})].join(" ").toLowerCase();
+      return !/heel|stiletto/.test(text) || /flat|low heel|block heel/.test(text);
+    });
+    if (comfortable.length > 0) shoeCandidates = comfortable;
+  }
+
+  const shoe = weightedPick(shoeCandidates.length > 0 ? shoeCandidates : shoes);
   if (shoe) {
     picked.push(shoe);
     descriptionParts.push(shoe.name);
   }
 
-  // Outerwear: skip entirely for the most casual band (level 1), a
-  // blazer over a sweatsuit is its own kind of mismatch.
-  if (band.max > 1 && outerwear.length > 0 && Math.random() < 0.35) {
+  // Outerwear: skip entirely for the most casual band (level 1) unless
+  // weather calls for it, a blazer over a sweatsuit is its own kind of
+  // mismatch, but a coat over a sweatsuit for a chilly/rainy day isn't.
+  const outerwearChance = forceOuterwear ? 0.9 : 0.35;
+  if ((band.max > 1 || forceOuterwear) && outerwear.length > 0 && Math.random() < outerwearChance) {
     const jacket = weightedPick(outerwear);
     if (jacket) {
       picked.push(jacket);

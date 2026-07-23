@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, Heart, Check, Sparkles, HelpCircle, BookMarked, Trash2 } from "lucide-react";
+import { Loader2, Heart, Check, Sparkles, HelpCircle, BookMarked, Trash2, X } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
 import OutfitItemStrip from "@/components/OutfitItemStrip";
 import HairstylePreview from "@/components/HairstylePreview";
@@ -36,6 +36,12 @@ const QUICK_PROMPTS = [
 ];
 
 const MOOD_CHIPS = ["Powerful", "Comfortable", "Romantic", "Trendy", "Confident"];
+// Practical, weather/day-shape context, distinct from the mood/vibe
+// chips above. These feed into both paths: appended to the AI prompt
+// verbatim when using Groq, and used as real filters in the local (no
+// AI) builder, e.g. "Chilly" biases toward including outerwear and
+// away from open-toe shoes, not just decorative wording either way.
+const CONTEXT_CHIPS = ["Chilly, layering needed", "All-day walking", "Sitting at a desk", "Rainy"];
 
 const QUICK_REFINEMENTS = [
   "Dressier",
@@ -68,6 +74,8 @@ export default function LooksPage() {
 
   const [prompt, setPrompt] = useState("");
   const [mood, setMood] = useState("");
+  const [context, setContext] = useState<string[]>([]);
+  const [swappingItem, setSwappingItem] = useState<ClosetItem | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<GeneratedResult | null>(null);
@@ -142,6 +150,7 @@ export default function LooksPage() {
         body: JSON.stringify({
           prompt: activePrompt,
           mood,
+          weather: context.join(", "),
           items: stripImagesForPrompt(closetItems),
           wigs,
           hairProfile,
@@ -180,7 +189,7 @@ export default function LooksPage() {
   function buildWithoutAI() {
     setError("");
     setSavedMessage("");
-    const local = buildLocalLook(closetItems, prompt.trim());
+    const local = buildLocalLook(closetItems, prompt.trim(), context);
     if (!local) {
       setError(
         "Your closet doesn't have enough marked-clean items yet to build a full look (need a dress, a set, or a top and bottom, plus shoes)."
@@ -201,6 +210,32 @@ export default function LooksPage() {
     setRefinement("");
     setWhyNotOpen(false);
     setWhyNotAnswers({});
+  }
+
+  // Local, no AI, no network call: swapping one disliked or dirty item
+  // for another of the same category shouldn't require a full
+  // regeneration (and the Groq call that comes with it) over a single
+  // piece. Sorted with less-worn items first, same "give a neglected
+  // piece a chance" spirit as the generators themselves.
+  const swapCandidates = swappingItem
+    ? (closetItems || [])
+        .filter(
+          (i) =>
+            i?.category === swappingItem.category &&
+            i?.id !== swappingItem.id &&
+            i?.laundryStatus === "clean" &&
+            !(result?.itemIds || []).includes(i.id)
+        )
+        .sort((a, b) => (a.timesWorn ?? 0) - (b.timesWorn ?? 0))
+    : [];
+
+  function applySwap(newItem: ClosetItem) {
+    if (!result || !swappingItem) return;
+    setResult({
+      ...result,
+      itemIds: result.itemIds.map((id) => (id === swappingItem.id ? newItem.id : id)),
+    });
+    setSwappingItem(null);
   }
 
   async function saveLook(markWorn: boolean) {
@@ -305,6 +340,31 @@ export default function LooksPage() {
             </div>
           </div>
 
+          <div>
+            <p className="text-xs text-stone-500 mb-1.5">
+              Anything practical to plan around? (optional)
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {CONTEXT_CHIPS.map((c) => (
+                <button
+                  key={c}
+                  onClick={() =>
+                    setContext((prev) =>
+                      prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]
+                    )
+                  }
+                  className={`px-3 py-1 rounded-full text-xs ${
+                    context.includes(c)
+                      ? "bg-stone-700 text-cream"
+                      : "bg-cream-100 text-stone-500"
+                  }`}
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <button
             onClick={() => generate()}
             disabled={loading}
@@ -347,7 +407,11 @@ export default function LooksPage() {
               ) : null}
             </div>
 
-            <OutfitItemStrip itemIds={result.itemIds} items={closetItems} />
+            <OutfitItemStrip
+              itemIds={result.itemIds}
+              items={closetItems}
+              onSwap={(item) => setSwappingItem(item)}
+            />
 
             {(() => {
               const outfitTopItem = closetItems.find(
@@ -601,6 +665,65 @@ export default function LooksPage() {
           ) : null}
         </div>
       </div>
+
+      {swappingItem ? (
+        <div
+          className="fixed inset-0 z-50 flex flex-col md:items-center md:justify-center bg-black/40"
+          onClick={() => setSwappingItem(null)}
+        >
+          <div
+            className="mt-auto md:mt-0 md:max-w-sm md:w-full bg-cream rounded-t-3xl md:rounded-3xl max-h-[75vh] flex flex-col pb-safe"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-clay-100">
+              <div className="min-w-0">
+                <h2 className="text-base font-medium text-stone-800">Swap item</h2>
+                <p className="text-xs text-stone-400 truncate">
+                  Replacing &ldquo;{swappingItem.name}&rdquo;
+                </p>
+              </div>
+              <button
+                onClick={() => setSwappingItem(null)}
+                className="p-2 rounded-full hover:bg-clay-50 shrink-0"
+                aria-label="Close"
+              >
+                <X size={18} className="text-stone-500" />
+              </button>
+            </div>
+            <div className="overflow-y-auto px-5 py-4">
+              {swapCandidates.length === 0 ? (
+                <p className="text-sm text-stone-500 text-center py-8">
+                  No other clean {swappingItem.category} items to swap in.
+                </p>
+              ) : (
+                <div className="grid grid-cols-3 gap-3">
+                  {swapCandidates.map((item) => (
+                    <button
+                      key={item.id}
+                      onClick={() => applySwap(item)}
+                      className="text-left"
+                    >
+                      <div className="aspect-[3/4] rounded-xl overflow-hidden bg-cream-100">
+                        {item.image ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={item.image}
+                            alt={item.name}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : null}
+                      </div>
+                      <p className="text-[11px] text-stone-600 mt-1 truncate">
+                        {item.name}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <BottomNav />
     </main>

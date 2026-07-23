@@ -53,6 +53,7 @@ export default function ManifestPage() {
 
   const [intention, setIntention] = useState<string | null>(null);
   const [zodiacSign, setZodiacSign] = useState<string | null>(null);
+  const [context, setContext] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingStep, setLoadingStep] = useState(0);
   const [error, setError] = useState("");
@@ -104,6 +105,7 @@ export default function ManifestPage() {
         body: JSON.stringify({
           intention,
           zodiacSign,
+          weather: context.join(", "),
           items: stripImagesForPrompt(closetItems),
           wigs,
           hairProfile,
@@ -193,6 +195,33 @@ export default function ManifestPage() {
                   {z}
                 </button>
               ))}
+            </div>
+          </div>
+
+          <div>
+            <p className="text-xs text-stone-500 mb-1.5">
+              Anything practical to plan around? (optional)
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {["Chilly, layering needed", "All-day walking", "Sitting at a desk", "Rainy"].map(
+                (c) => (
+                  <button
+                    key={c}
+                    onClick={() =>
+                      setContext((prev) =>
+                        prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]
+                      )
+                    }
+                    className={`px-3 py-1 rounded-full text-xs ${
+                      context.includes(c)
+                        ? "bg-stone-700 text-cream"
+                        : "bg-cream-100 text-stone-500"
+                    }`}
+                  >
+                    {c}
+                  </button>
+                )
+              )}
             </div>
           </div>
 

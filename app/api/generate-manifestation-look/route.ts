@@ -15,6 +15,7 @@ const INTENTION_GUIDANCE: Record<string, string> = {
 interface ManifestBody {
   intention?: string;
   zodiacSign?: string;
+  weather?: string;
   items?: ClosetItem[];
   wigs?: WigItem[];
   hairProfile?: HairProfile | null;
@@ -57,6 +58,7 @@ export async function POST(req: NextRequest) {
     }
 
     const zodiacSign = sanitizeGroqText(body?.zodiacSign || "");
+    const weather = sanitizeGroqText(body?.weather || "");
     const styleDescription = sanitizeGroqText(body?.styleDescription || "");
     const styleKeywords = (Array.isArray(body?.styleKeywords) ? body!.styleKeywords : [])
       .map((k) => sanitizeGroqText(k))
@@ -168,6 +170,7 @@ Return ONLY a JSON object:
     const userPrompt = `Intention: ${intention}
 Planetary guidance to draw from: ${guidance}
 ${zodiacSign ? `User's zodiac sign: ${zodiacSign} (use this for light flavor/personality in the reasoning, not as a hard styling rule)` : ""}
+${weather ? `Practical context to plan around: ${weather} (still honor the intention/planetary guidance above, but don't suggest something impractical for this, e.g. open shoes on a rainy or all-day-walking day)` : ""}
 
 ${hairContext}
 

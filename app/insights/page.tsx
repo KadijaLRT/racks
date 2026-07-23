@@ -1,55 +1,43 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowLeft, Loader2, Sparkles, Shirt } from "lucide-react";
+import { ArrowLeft, Shirt } from "lucide-react";
 import Link from "next/link";
 import BottomNav from "@/components/BottomNav";
-import { closetStore, lookStore } from "@/lib/storage";
-import type { ClosetItem, GeneratedLook } from "@/lib/types";
+import { closetStore } from "@/lib/storage";
+import type { ClosetItem } from "@/lib/types";
+import { buildLocalInsights } from "@/lib/localInsights";
 
+// Entirely local, zero AI, zero network: real statistics computed
+// directly from the closet (wear counts, category balance, color
+// concentration) rather than requiring a model, since what "insights"
+// surfaces is genuine arithmetic, not language understanding that
+// would benefit from AI phrasing enough to be worth the Groq usage.
 export default function InsightsPage() {
   const [closetItems, setClosetItems] = useState<ClosetItem[]>([]);
-  const [looks, setLooks] = useState<GeneratedLook[]>([]);
   const [loaded, setLoaded] = useState(false);
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [gaps, setGaps] = useState<string[]>([]);
   const [patterns, setPatterns] = useState<string[]>([]);
   const [hasRun, setHasRun] = useState(false);
 
   useEffect(() => {
-    Promise.all([closetStore.getAll(), lookStore.getAll()]).then(
-      ([items, lookList]) => {
-        setClosetItems(items || []);
-        setLooks(lookList || []);
-        setLoaded(true);
-      }
-    );
+    closetStore.getAll().then((items) => {
+      setClosetItems(items || []);
+      setLoaded(true);
+    });
   }, []);
 
-  async function runInsights() {
+  function runInsights() {
     if (closetItems.length === 0) {
       setError("Add some closet items first.");
       return;
     }
-    setBusy(true);
     setError("");
-    try {
-      const res = await fetch("/api/closet-insights", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: closetItems, looks }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (data?.error) throw new Error(data.error);
-      setGaps(data.gaps || []);
-      setPatterns(data.patterns || []);
-      setHasRun(true);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't build insights right now.");
-    } finally {
-      setBusy(false);
-    }
+    const local = buildLocalInsights(closetItems);
+    setGaps(local.gaps);
+    setPatterns(local.patterns);
+    setHasRun(true);
   }
 
   return (
@@ -75,15 +63,9 @@ export default function InsightsPage() {
         {loaded && !hasRun ? (
           <button
             onClick={runInsights}
-            disabled={busy}
-            className="w-full rounded-xl bg-emerald-600 text-cream py-3 text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-60"
+            className="w-full rounded-xl bg-emerald-600 text-cream py-3 text-sm font-medium"
           >
-            {busy ? (
-              <Loader2 size={16} className="animate-spin" />
-            ) : (
-              <Sparkles size={16} />
-            )}
-            {busy ? "Looking through your closet..." : "Run closet insights"}
+            Run closet insights
           </button>
         ) : null}
 
@@ -117,10 +99,9 @@ export default function InsightsPage() {
 
             <button
               onClick={runInsights}
-              disabled={busy}
-              className="w-full rounded-xl border border-clay-200 text-stone-600 py-2.5 text-xs font-medium disabled:opacity-60"
+              className="w-full rounded-xl border border-clay-200 text-stone-600 py-2.5 text-xs font-medium"
             >
-              {busy ? "Refreshing..." : "Refresh insights"}
+              Refresh insights
             </button>
 
             <Link

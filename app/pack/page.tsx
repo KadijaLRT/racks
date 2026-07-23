@@ -1,18 +1,25 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, Luggage, Trash2, ChevronDown, ChevronUp } from "lucide-react";
+import { Luggage, Trash2, ChevronDown, ChevronUp } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
 import OutfitItemStrip from "@/components/OutfitItemStrip";
 import { closetStore, tripStore } from "@/lib/storage";
 import type { ClosetItem, Trip } from "@/lib/types";
+import { buildLocalPackingPlan } from "@/lib/localPackBuilder";
 
+// Entirely local, zero AI, zero network call. The one thing AI added
+// here was parsing a free-text trip description into weather/occasion
+// context, that's a nice-to-have, not something the core function
+// (build a packing list and a day-by-day outfit plan from your
+// closet) actually needs. An explicit day count does the same job
+// for the local builder without needing a model to interpret anything.
 export default function PackPage() {
   const [closetItems, setClosetItems] = useState<ClosetItem[]>([]);
   const [trips, setTrips] = useState<Trip[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [description, setDescription] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [days, setDays] = useState(3);
   const [error, setError] = useState("");
   const [expandedTripId, setExpandedTripId] = useState<string | null>(null);
 
@@ -27,45 +34,31 @@ export default function PackPage() {
   }, []);
 
   async function generatePlan() {
-    const trimmed = description.trim();
-    if (!trimmed) {
-      setError("Describe the trip first, e.g. dates, destination, activities.");
-      return;
-    }
     if (closetItems.length === 0) {
       setError("Add some items to your closet first.");
       return;
     }
-
-    setLoading(true);
     setError("");
-    try {
-      const res = await fetch("/api/pack-trip", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ description: trimmed, items: closetItems }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (data?.error) throw new Error(data.error);
-
-      const saved = await tripStore.create({
-        description: trimmed,
-        packingList: data.packingList || [],
-        outfits: data.outfits || [],
-        gaps: data.gaps || [],
-        capsuleSize: data.capsuleSize,
-        totalOutfitsPossible: data.totalOutfitsPossible,
-      });
-      setTrips((prev) => [saved, ...(prev || [])]);
-      setExpandedTripId(saved.id);
-      setDescription("");
-    } catch (err) {
+    const plan = buildLocalPackingPlan(closetItems, days);
+    if (!plan) {
       setError(
-        err instanceof Error ? err.message : "Couldn't build a packing plan for that trip."
+        "Your closet doesn't have enough marked-clean items yet (need a dress, a set, or a top and a bottom, plus shoes)."
       );
-    } finally {
-      setLoading(false);
+      return;
     }
+
+    const label = description.trim() || `${days}-day trip`;
+    const saved = await tripStore.create({
+      description: label,
+      packingList: plan.packingList,
+      outfits: plan.outfits,
+      gaps: plan.gaps,
+      capsuleSize: plan.capsuleSize,
+      totalOutfitsPossible: plan.totalOutfitsPossible,
+    });
+    setTrips((prev) => [saved, ...(prev || [])]);
+    setExpandedTripId(saved.id);
+    setDescription("");
   }
 
   async function removeTrip(id: string) {
@@ -79,29 +72,46 @@ export default function PackPage() {
         <div>
           <h1 className="text-xl font-semibold text-stone-800">Pack</h1>
           <p className="text-sm text-stone-500 mt-0.5">
-            Describe the trip, get a packing list from what you already own.
+            How many days, and what should we call this trip? Get a packing
+            list and outfits from what you already own.
           </p>
         </div>
 
         <div className="bg-white rounded-2xl p-4 space-y-3">
-          <textarea
+          <input
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            rows={3}
-            placeholder="e.g. 4 days in Lisbon, warm days, one nice dinner, lots of walking"
-            className="w-full rounded-xl border border-clay-100 px-3 py-2.5 text-sm resize-none"
+            placeholder="Trip name (optional), e.g. Lisbon in June"
+            className="w-full rounded-xl border border-clay-100 px-3 py-2.5 text-sm"
           />
+          <div>
+            <label className="text-xs text-stone-500">Number of days</label>
+            <div className="flex items-center gap-3 mt-1.5">
+              <button
+                onClick={() => setDays((d) => Math.max(1, d - 1))}
+                className="w-9 h-9 rounded-full bg-cream-100 text-stone-600 text-lg font-medium"
+                aria-label="Fewer days"
+              >
+                −
+              </button>
+              <span className="text-sm font-medium text-stone-700 w-16 text-center">
+                {days} {days === 1 ? "day" : "days"}
+              </span>
+              <button
+                onClick={() => setDays((d) => Math.min(14, d + 1))}
+                className="w-9 h-9 rounded-full bg-cream-100 text-stone-600 text-lg font-medium"
+                aria-label="More days"
+              >
+                +
+              </button>
+            </div>
+          </div>
           <button
             onClick={generatePlan}
-            disabled={loading}
-            className="w-full rounded-xl bg-emerald-600 text-cream py-3 text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-60"
+            className="w-full rounded-xl bg-emerald-600 text-cream py-3 text-sm font-medium flex items-center justify-center gap-2"
           >
-            {loading ? (
-              <Loader2 size={16} className="animate-spin" />
-            ) : (
-              <Luggage size={16} />
-            )}
-            {loading ? "Building your packing list..." : "Build packing plan"}
+            <Luggage size={16} />
+            Build packing plan
           </button>
         </div>
 
@@ -114,7 +124,7 @@ export default function PackPage() {
         {loaded && trips.length === 0 ? (
           <div className="text-center py-16 px-6">
             <p className="text-sm text-stone-500">
-              No trips planned yet. Describe your next one above.
+              No trips planned yet. Set a day count above to start.
             </p>
           </div>
         ) : (

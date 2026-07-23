@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { X, Loader2 } from "lucide-react";
+import { useMemo } from "react";
+import { X } from "lucide-react";
 import OutfitItemStrip from "@/components/OutfitItemStrip";
 import type { ClosetItem } from "@/lib/types";
+import { buildLocalRemix } from "@/lib/localRemix";
 
 interface RemixOutfit {
   label: string;
@@ -11,6 +12,13 @@ interface RemixOutfit {
   reasoning: string;
 }
 
+// Entirely local, zero AI, zero network call: unlike Looks (which
+// needs to interpret an occasion/mood in free text), Remix has no
+// language input at all, it's purely combinatorial (a fixed anchor
+// item plus the rest of the closet), which local weighted selection
+// handles just as well as a model would, without the Groq usage this
+// used to cost on every single open (it previously fired automatically
+// on mount, not even behind a button tap).
 export default function RemixSheet({
   anchorItem,
   closetItems,
@@ -20,35 +28,18 @@ export default function RemixSheet({
   closetItems: ClosetItem[];
   onClose: () => void;
 }) {
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [outfits, setOutfits] = useState<RemixOutfit[]>([]);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/remix-item", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ anchorItem, items: closetItems }),
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        if (cancelled) return;
-        if (data?.error) {
-          setError(data.error);
-          return;
-        }
-        setOutfits(data?.outfits || []);
-      })
-      .catch(() => {
-        if (!cancelled) setError("Couldn't build outfits around this item right now.");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
+  const { error, outfits } = useMemo(() => {
+    const rest = (closetItems || []).filter(
+      (i) => i?.id !== anchorItem.id && i?.laundryStatus === "clean"
+    );
+    if (rest.length === 0) {
+      return {
+        error:
+          "Not enough other clean items in your closet to build outfits around this one yet.",
+        outfits: [] as RemixOutfit[],
+      };
+    }
+    return { error: "", outfits: buildLocalRemix(anchorItem, closetItems) };
   }, [anchorItem, closetItems]);
 
   return (
@@ -67,11 +58,7 @@ export default function RemixSheet({
         </div>
 
         <div className="overflow-y-auto px-5 py-4 space-y-4 flex-1">
-          {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 size={22} className="animate-spin text-emerald-600" />
-            </div>
-          ) : error ? (
+          {error ? (
             <div className="rounded-xl bg-clay-50 text-clay-700 text-xs px-3 py-2">
               {error}
             </div>

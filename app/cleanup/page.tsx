@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowLeft, Sparkles, Loader2 } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { useRouter } from "next/navigation";
 import BottomNav from "@/components/BottomNav";
 import { closetStore } from "@/lib/storage";
 import type { ClosetItem } from "@/lib/types";
+import { buildLocalCleanupSuggestions } from "@/lib/localCleanup";
 
 const STATUS_OPTIONS: { value: NonNullable<ClosetItem["closetStatus"]>; label: string }[] = [
   { value: "keep", label: "Keep" },
@@ -24,8 +25,6 @@ export default function CleanupPage() {
   const router = useRouter();
   const [items, setItems] = useState<ClosetItem[]>([]);
   const [loaded, setLoaded] = useState(false);
-  const [suggesting, setSuggesting] = useState(false);
-  const [suggestionError, setSuggestionError] = useState("");
   const [suggestions, setSuggestions] = useState<Record<string, Suggestion>>({});
 
   useEffect(() => {
@@ -51,43 +50,29 @@ export default function CleanupPage() {
     });
   }
 
-  async function getSuggestions() {
+  function computeNeglectedItems() {
+    return items.map((item) => ({
+      id: item.id,
+      category: item.category,
+      name: item.name,
+      tags: item.tags,
+      timesWorn: item.timesWorn || 0,
+      ageDays: Math.max(
+        0,
+        Math.round((Date.now() - (item.createdAt || Date.now())) / (24 * 60 * 60 * 1000))
+      ),
+    }));
+  }
+
+  function getSuggestions() {
     if (items.length === 0) return;
-    setSuggesting(true);
-    setSuggestionError("");
-    try {
-      const neglectedItems = items.map((item) => ({
-        id: item.id,
-        category: item.category,
-        name: item.name,
-        tags: item.tags,
-        timesWorn: item.timesWorn || 0,
-        ageDays: Math.max(
-          0,
-          Math.round((Date.now() - (item.createdAt || Date.now())) / (24 * 60 * 60 * 1000))
-        ),
-      }));
-
-      const res = await fetch("/api/closet-cleanup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ neglectedItems }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (data?.error) throw new Error(data.error);
-
-      const map: Record<string, Suggestion> = {};
-      for (const s of data?.suggestions || []) {
-        if (s?.id) map[s.id] = { action: s.action, reason: s.reason };
-      }
-      setSuggestions(map);
-    } catch (err) {
-      setSuggestionError(
-        err instanceof Error ? err.message : "Couldn't get suggestions right now."
-      );
-    } finally {
-      setSuggesting(false);
+    const neglectedItems = computeNeglectedItems();
+    const results = buildLocalCleanupSuggestions(neglectedItems);
+    const map: Record<string, Suggestion> = {};
+    for (const s of results) {
+      map[s.id] = { action: s.action, reason: s.reason };
     }
+    setSuggestions(map);
   }
 
   return (
@@ -111,22 +96,10 @@ export default function CleanupPage() {
         {loaded && items.length > 0 && Object.keys(suggestions).length === 0 ? (
           <button
             onClick={getSuggestions}
-            disabled={suggesting}
-            className="w-full rounded-xl border border-emerald-200 text-emerald-700 py-2.5 text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-60"
+            className="w-full rounded-xl border border-emerald-200 text-emerald-700 py-2.5 text-sm font-medium"
           >
-            {suggesting ? (
-              <Loader2 size={16} className="animate-spin" />
-            ) : (
-              <Sparkles size={16} />
-            )}
-            {suggesting ? "Thinking it through..." : "Get suggestions for these"}
+            Get suggestions for these
           </button>
-        ) : null}
-
-        {suggestionError ? (
-          <div className="rounded-xl bg-clay-50 text-clay-700 text-xs px-3 py-2">
-            {suggestionError}
-          </div>
         ) : null}
 
         {loaded && items.length === 0 ? (

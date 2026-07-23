@@ -23,6 +23,7 @@ import {
   incrementTimesWorn,
 } from "@/lib/storage";
 import type { ClosetItem, WigItem, HairProfile, ColorProfile, GeneratedLook, UserMeasurements } from "@/lib/types";
+import { buildLocalLook } from "@/lib/localLookBuilder";
 
 const QUICK_PROMPTS = [
   "Work meeting",
@@ -169,6 +170,38 @@ export default function LooksPage() {
     }
   }
 
+  // Entirely local, zero AI, zero network: for when Groq isn't
+  // cooperating (rate limited, or just unreliable) but the person
+  // still wants an outfit built from their closet right now. Applies
+  // the same basic logic the AI prompt asks for (favor neglected
+  // pieces, respect pinned favorites, require a coherent combo) as
+  // pure local selection instead.
+  function buildWithoutAI() {
+    setError("");
+    setSavedMessage("");
+    const local = buildLocalLook(closetItems);
+    if (!local) {
+      setError(
+        "Your closet doesn't have enough marked-clean items yet to build a full look (need a dress, a set, or a top and bottom, plus shoes)."
+      );
+      return;
+    }
+    setResult({
+      itemIds: local.itemIds,
+      hairstyle: "",
+      makeup: "",
+      reasoning: local.reasoning,
+      scores: {},
+      overallLabel: "Locally built",
+      overallStars: 0,
+      strengths: [],
+      weaknesses: [],
+    });
+    setRefinement("");
+    setWhyNotOpen(false);
+    setWhyNotAnswers({});
+  }
+
   async function saveLook(markWorn: boolean) {
     if (!result) return;
     const saved = await lookStore.create({
@@ -282,6 +315,14 @@ export default function LooksPage() {
               <Sparkles size={16} />
             )}
             {loading ? "Styling your look..." : "Generate a look"}
+          </button>
+
+          <button
+            onClick={buildWithoutAI}
+            disabled={loading}
+            className="w-full rounded-xl border border-clay-200 text-stone-600 py-2.5 text-xs font-medium disabled:opacity-60"
+          >
+            Build without AI
           </button>
         </div>
 

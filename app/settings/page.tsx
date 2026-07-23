@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, Download, Upload, Trash2, Loader2, Sparkles } from "lucide-react";
+import { useRef, useState } from "react";
+import { ArrowLeft, Download, Upload, Trash2, Loader2 } from "lucide-react";
 import Link from "next/link";
 import BottomNav from "@/components/BottomNav";
-import { exportAllData, importAllData, appSettingsStore } from "@/lib/storage";
+import { exportAllData, importAllData } from "@/lib/storage";
 import { keys, del } from "idb-keyval";
 
 export default function SettingsPage() {
@@ -12,20 +12,7 @@ export default function SettingsPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [confirmingClear, setConfirmingClear] = useState(false);
-  const [autoTagOnUpload, setAutoTagOnUpload] = useState(true);
   const fileRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    appSettingsStore.get().then((settings) => {
-      setAutoTagOnUpload(settings?.autoTagOnUpload !== false);
-    });
-  }, []);
-
-  async function toggleAutoTag() {
-    const next = !autoTagOnUpload;
-    setAutoTagOnUpload(next);
-    await appSettingsStore.save({ autoTagOnUpload: next });
-  }
 
   async function handleExport() {
     setBusy(true);
@@ -128,40 +115,6 @@ export default function SettingsPage() {
             {error}
           </div>
         ) : null}
-
-        <div className="bg-white rounded-2xl p-4 space-y-3">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-sm font-medium text-stone-700 flex items-center gap-1.5">
-                <Sparkles size={14} className="text-emerald-700" />
-                Auto-tag new items
-              </p>
-              <p className="text-xs text-stone-400 mt-0.5">
-                When on, adding an item calls AI right away to name and tag
-                it. Turn this off to save items instantly with no AI call,
-                then tag them later using Retag (individually, or all at
-                once from the closet), on your own schedule, so importing
-                many items in a row doesn&apos;t use up Groq&apos;s rate
-                limit.
-              </p>
-            </div>
-            <button
-              onClick={toggleAutoTag}
-              role="switch"
-              aria-checked={autoTagOnUpload}
-              aria-label="Auto-tag new items"
-              className={`relative shrink-0 w-11 h-6 rounded-full transition-colors ${
-                autoTagOnUpload ? "bg-emerald-600" : "bg-clay-200"
-              }`}
-            >
-              <span
-                className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${
-                  autoTagOnUpload ? "translate-x-5" : "translate-x-0"
-                }`}
-              />
-            </button>
-          </div>
-        </div>
 
         <div className="bg-white rounded-2xl p-4 space-y-3">
           <div>

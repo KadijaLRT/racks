@@ -180,7 +180,7 @@ export default function LooksPage() {
   function buildWithoutAI() {
     setError("");
     setSavedMessage("");
-    const local = buildLocalLook(closetItems);
+    const local = buildLocalLook(closetItems, prompt.trim());
     if (!local) {
       setError(
         "Your closet doesn't have enough marked-clean items yet to build a full look (need a dress, a set, or a top and bottom, plus shoes)."

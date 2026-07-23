@@ -815,18 +815,6 @@ export default function ItemEditSheet({
                         BACK_STYLE_OPTIONS
                       )}
                     </>
-                  ) : category === "set" &&
-                    subcategory.toLowerCase().includes("jewelry set") ? (
-                    // A jewelry set is a matching group of pieces, not a
-                    // garment, so it gets the same Jewelry Type picker as
-                    // an individual jewelry accessory (multi-select, so
-                    // "Necklace, Earrings, Bracelet" can all be marked as
-                    // part of the set) instead of garment attributes.
-                    renderQuickPickRow(
-                      "Jewelry Type",
-                      "jewelryType",
-                      JEWELRY_TYPE_OPTIONS
-                    )
                   ) : category === "top" || category === "dress" || category === "set" ? (
                     <>
                       {renderQuickPickRow("Neckline", "neckline", NECKLINE_OPTIONS)}

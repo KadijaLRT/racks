@@ -7,7 +7,7 @@
 // builders to assemble a day-by-day outfit plan.
 
 import type { ClosetItem } from "./types";
-import { weightedPick } from "./localLookBuilder";
+import { weightedPick, estimateFormality } from "./localLookBuilder";
 
 export interface LocalPackingPlan {
   packingList: string[];
@@ -69,11 +69,28 @@ export function buildLocalPackingPlan(
     };
     pickBase();
 
-    const shoe = weightedPick(shoes);
+    // Whatever the base's formality turns out to be, keep shoes and
+    // any add-ons within one level of it rather than picking them
+    // independently at random, otherwise a loungewear base can end up
+    // paired with dressy heels just because both were under-worn.
+    const baseFormality =
+      picked.length > 0
+        ? Math.round(picked.reduce((sum, p) => sum + estimateFormality(p), 0) / picked.length)
+        : 2;
+    const band = { min: Math.max(1, baseFormality - 1), max: Math.min(5, baseFormality + 1) };
+    const inBand = (pool: ClosetItem[]) => {
+      const filtered = pool.filter((i) => {
+        const f = estimateFormality(i);
+        return f >= band.min && f <= band.max;
+      });
+      return filtered.length > 0 ? filtered : pool;
+    };
+
+    const shoe = weightedPick(inBand(shoes));
     if (shoe) picked.push(shoe);
 
-    if (outerwear.length > 0 && Math.random() < 0.4) {
-      const jacket = weightedPick(outerwear);
+    if (band.max > 1 && outerwear.length > 0 && Math.random() < 0.4) {
+      const jacket = weightedPick(inBand(outerwear));
       if (jacket) picked.push(jacket);
     }
     if (accessories.length > 0 && Math.random() < 0.6) {

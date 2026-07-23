@@ -1,12 +1,13 @@
 // Builds outfit variations around one fixed "anchor" item, entirely
-// locally, zero AI, zero network call. This is a clean fit for a local
-// fallback: unlike Looks (which needs to interpret an occasion/mood in
-// free text), Remix has no language input at all, it's purely
-// combinatorial (anchor item + rest of closet), which local weighted
-// selection handles just as well as asking a model to.
+// locally, zero AI, zero network call. Every non-anchor candidate is
+// constrained to a formality band relative to the anchor's own
+// formality (estimated the same way Looks does it), so remixing a
+// sweatsuit can no longer surface heels or a blazer just because they
+// were under-worn — "Dressed up" nudges the band up a notch instead of
+// ignoring formality entirely.
 
 import type { ClosetItem } from "./types";
-import { weightedPick } from "./localLookBuilder";
+import { weightedPick, estimateFormality } from "./localLookBuilder";
 
 export interface LocalRemixOutfit {
   label: string;
@@ -16,10 +17,24 @@ export interface LocalRemixOutfit {
 
 function pickExcluding(
   candidates: ClosetItem[],
-  excludeIds: Set<string>
+  excludeIds: Set<string>,
+  band: { min: number; max: number }
 ): ClosetItem | null {
   const pool = candidates.filter((c) => !excludeIds.has(c.id));
-  return weightedPick(pool.length > 0 ? pool : candidates);
+  const base = pool.length > 0 ? pool : candidates;
+  const inBand = base.filter((c) => {
+    const f = estimateFormality(c);
+    return f >= band.min && f <= band.max;
+  });
+  if (inBand.length > 0) return weightedPick(inBand);
+  // Graceful fallback: closest formality to the band rather than
+  // nothing, so a very small closet still produces an outfit.
+  const sorted = [...base].sort(
+    (a, b) =>
+      Math.abs(estimateFormality(a) - (band.min + band.max) / 2) -
+      Math.abs(estimateFormality(b) - (band.min + band.max) / 2)
+  );
+  return weightedPick(sorted.slice(0, Math.max(1, Math.ceil(sorted.length / 2))));
 }
 
 export function buildLocalRemix(
@@ -41,6 +56,7 @@ export function buildLocalRemix(
 
   const anchorIsBase = ["top", "bottom", "dress", "set"].includes(anchorItem.category);
   const anchorIsShoes = anchorItem.category === "shoes";
+  const anchorFormality = estimateFormality(anchorItem);
 
   const variations: LocalRemixOutfit[] = [];
   const usedNonAnchor = new Set<string>();
@@ -48,55 +64,61 @@ export function buildLocalRemix(
   const labels = ["Everyday", "Dressed up", "Another way to wear it"];
 
   for (let v = 0; v < 3; v++) {
+    // "Dressed up" deliberately shifts the band up rather than
+    // ignoring formality: the anchor's own level is a floor, not
+    // something that can be styled down here.
+    const band =
+      v === 1
+        ? { min: anchorFormality, max: Math.min(5, anchorFormality + 2) }
+        : { min: Math.max(1, anchorFormality - 1), max: Math.min(5, anchorFormality + 1) };
+
     const picked: ClosetItem[] = [anchorItem];
 
-    // Fill in whatever base pieces the anchor doesn't already cover.
     if (anchorItem.category === "top") {
-      const bottom = pickExcluding(bottoms, v === 2 ? usedNonAnchor : new Set());
+      const bottom = pickExcluding(bottoms, v === 2 ? usedNonAnchor : new Set(), band);
       if (bottom) picked.push(bottom);
     } else if (anchorItem.category === "bottom") {
-      const top = pickExcluding(tops, v === 2 ? usedNonAnchor : new Set());
+      const top = pickExcluding(tops, v === 2 ? usedNonAnchor : new Set(), band);
       if (top) picked.push(top);
     } else if (!anchorIsBase && !anchorIsShoes) {
-      // Anchor is outerwear/accessory: needs a full base underneath.
       const base =
         dresses.length > 0 || sets.length > 0
-          ? pickExcluding([...dresses, ...sets], v === 2 ? usedNonAnchor : new Set())
+          ? pickExcluding([...dresses, ...sets], v === 2 ? usedNonAnchor : new Set(), band)
           : null;
       if (base) {
         picked.push(base);
       } else {
-        const top = pickExcluding(tops, v === 2 ? usedNonAnchor : new Set());
-        const bottom = pickExcluding(bottoms, v === 2 ? usedNonAnchor : new Set());
+        const top = pickExcluding(tops, v === 2 ? usedNonAnchor : new Set(), band);
+        const bottom = pickExcluding(bottoms, v === 2 ? usedNonAnchor : new Set(), band);
         if (top) picked.push(top);
         if (bottom) picked.push(bottom);
       }
     } else if (anchorIsShoes) {
       const base =
         dresses.length > 0 || sets.length > 0
-          ? pickExcluding([...dresses, ...sets], v === 2 ? usedNonAnchor : new Set())
+          ? pickExcluding([...dresses, ...sets], v === 2 ? usedNonAnchor : new Set(), band)
           : null;
       if (base) {
         picked.push(base);
       } else {
-        const top = pickExcluding(tops, v === 2 ? usedNonAnchor : new Set());
-        const bottom = pickExcluding(bottoms, v === 2 ? usedNonAnchor : new Set());
+        const top = pickExcluding(tops, v === 2 ? usedNonAnchor : new Set(), band);
+        const bottom = pickExcluding(bottoms, v === 2 ? usedNonAnchor : new Set(), band);
         if (top) picked.push(top);
         if (bottom) picked.push(bottom);
       }
     }
 
-    // Shoes, unless the anchor already is shoes.
     if (!anchorIsShoes && shoes.length > 0) {
-      const shoe = pickExcluding(shoes, v === 2 ? usedNonAnchor : new Set());
+      const shoe = pickExcluding(shoes, v === 2 ? usedNonAnchor : new Set(), band);
       if (shoe) picked.push(shoe);
     }
 
-    // Variation 2 ("Dressed up") gets outerwear if available; variation
-    // 3 gets an accessory instead, for a bit of visible difference
-    // between the three rather than three near-identical outfits.
     if (v === 1 && outerwear.length > 0) {
-      const jacket = weightedPick(outerwear);
+      const inBand = outerwear.filter((o) => {
+        const f = estimateFormality(o);
+        return f >= band.min && f <= band.max;
+      });
+      const jacket = weightedPick(inBand.length > 0 ? inBand : outerwear);
       if (jacket) picked.push(jacket);
     }
     if (v === 2 && accessories.length > 0) {
@@ -115,13 +137,11 @@ export function buildLocalRemix(
         v === 1
           ? `${anchorItem.name}, styled up a notch.`
           : v === 2
-          ? `A different pairing for ${anchorItem.name}.`
+          ? `A different pairing for ${anchorItem.name}, kept to a similar formality.`
           : `A simple, everyday way to wear ${anchorItem.name}.`,
     });
   }
 
-  // De-duplicate outfits that ended up identical (small closets may not
-  // have enough alternates to make all 3 genuinely different).
   const seen = new Set<string>();
   return variations.filter((v) => {
     const key = [...v.itemIds].sort().join(",");

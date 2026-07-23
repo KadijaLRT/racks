@@ -118,7 +118,18 @@ async function callGroq(
       // effort for jsonMode calls keeps that budget going to the
       // answer instead, since none of these tasks need deep reasoning,
       // they need a constrained selection.
-      ...(opts.jsonMode ? { reasoning_effort: "low" } : {}),
+      //
+      // Critical: the accepted values differ by model family. GPT-OSS
+      // models take "low"/"medium"/"high"; Qwen models only take
+      // "none"/"default", anything else is a 400 Bad Request from Groq.
+      // Every vision-based tagging call uses Qwen (VISION_MODEL), so
+      // passing "low" there broke retagging specifically while
+      // text-only routes on GPT-OSS kept working.
+      ...(opts.jsonMode
+        ? {
+            reasoning_effort: opts.model.includes("qwen") ? "none" : "low",
+          }
+        : {}),
     }),
   });
 }

@@ -5,7 +5,7 @@ import type { ItemCategory } from "@/lib/types";
 
 const CATEGORY_FIELDS: Record<string, string> = {
   top: "type (shirt/blouse/sweater/tee/etc), color, pattern, material, sleeve length, fit, formality, season",
-  bottom: "type (jeans/trousers/skirt/shorts/etc), color, pattern, material, fit, formality, season",
+  bottom: "type (jeans/pants/skirt/shorts/etc), color, pattern, material, fit, formality, season",
   dress: "silhouette, color, pattern, material, sleeve length, formality, season",
   set: "matching set type (co-ord/two-piece/tracksuit/pajama set etc), color, pattern, material, formality, season",
   outerwear: "type (blazer/coat/jacket/cardigan), color, material, formality, season",

@@ -16,6 +16,7 @@ export default function ClosetPage() {
   const [items, setItems] = useState<ClosetItem[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [filter, setFilter] = useState<ItemCategory | "all">("all");
+  const [groupBy, setGroupBy] = useState("subcategory");
   const [search, setSearch] = useState("");
   const [pendingCategory, setPendingCategory] = useState<ItemCategory>("top");
   const [uploading, setUploading] = useState(false);
@@ -66,6 +67,63 @@ export default function ClosetPage() {
     });
   }, []);
 
+  // Which dimensions make sense to browse by, per category. "subcategory"
+  // is a real field on the item; everything else is a tag key. Always
+  // offering "Type" first since that's the most universally useful
+  // grouping, plus whatever's actually distinctive for that category
+  // (sleeve length for tops, silhouette for dresses, heel height for
+  // shoes), so browsing reflects how someone actually thinks about
+  // that category rather than one fixed grouping for everything.
+  const GROUPING_OPTIONS: Record<string, { label: string; key: string }[]> = {
+    top: [
+      { label: "Type", key: "subcategory" },
+      { label: "Sleeve Length", key: "sleeveLength" },
+      { label: "Neckline", key: "neckline" },
+      { label: "Color", key: "color" },
+    ],
+    bottom: [
+      { label: "Type", key: "subcategory" },
+      { label: "Fit", key: "fit" },
+      { label: "Color", key: "color" },
+    ],
+    dress: [
+      { label: "Length", key: "subcategory" },
+      { label: "Silhouette", key: "dressSilhouette" },
+      { label: "Neckline", key: "neckline" },
+      { label: "Color", key: "color" },
+    ],
+    set: [
+      { label: "Type", key: "subcategory" },
+      { label: "Color", key: "color" },
+    ],
+    outerwear: [
+      { label: "Type", key: "subcategory" },
+      { label: "Color", key: "color" },
+    ],
+    shoes: [
+      { label: "Type", key: "subcategory" },
+      { label: "Heel Height", key: "heelHeight" },
+      { label: "Color", key: "color" },
+    ],
+    accessory: [
+      { label: "Type", key: "subcategory" },
+      { label: "Material", key: "material" },
+      { label: "Color", key: "color" },
+    ],
+    makeup: [
+      { label: "Type", key: "subcategory" },
+      { label: "Makeup Type", key: "makeupType" },
+    ],
+  };
+
+  // Reset to that category's first grouping option whenever the
+  // category filter changes, rather than carrying over a dimension
+  // (like "Sleeve Length") that doesn't exist for the new category.
+  function selectFilter(next: ItemCategory | "all") {
+    setFilter(next);
+    setGroupBy("subcategory");
+  }
+
   const filteredItems = useMemo(() => {
     const query = search.trim().toLowerCase();
     return (items || []).filter((item) => {
@@ -83,18 +141,26 @@ export default function ClosetPage() {
   }, [items, filter, search]);
 
   // Once a specific category is selected (not "All"), group the grid
-  // into labeled sections by subcategory (t-shirts separate from
-  // sweaters separate from hoodies, sneakers separate from heels, mini
-  // dresses separate from maxi, etc.) instead of one flat list, so
-  // browsing a category is organized by what an item actually is, not
-  // just chronological order. Left flat for "All", since mixing
+  // into labeled sections by whichever dimension is currently chosen
+  // (type/subcategory by default, or sleeve length, silhouette, color,
+  // etc. via the Group by row) instead of one flat list, so browsing a
+  // category is organized by what actually distinguishes those items,
+  // not just chronological order. Left flat for "All", since mixing
   // subcategory vocabularies across categories (a bag next to a
   // sweater) wouldn't read as a coherent grouping.
   const groupedSections = useMemo(() => {
     if (filter === "all") return null;
     const groups = new Map<string, ClosetItem[]>();
     for (const item of filteredItems) {
-      const key = (item?.subcategory || "").trim().toLowerCase() || "other";
+      const raw =
+        groupBy === "subcategory"
+          ? item?.subcategory || ""
+          : (item?.tags || {})[groupBy] || "";
+      // Quick-pick tags can hold multiple comma-joined values (e.g.
+      // "Short Sleeve, Long Sleeve" isn't realistic, but "Puff / Juliet,
+      // Bell Sleeve" style multi-selects are); group by the first value
+      // rather than creating a combinatorial explosion of section labels.
+      const key = raw.split(",")[0]?.trim().toLowerCase() || "other";
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key)!.push(item);
     }
@@ -108,7 +174,7 @@ export default function ClosetPage() {
         label: key === "other" ? "Other" : key.replace(/\b\w/g, (c) => c.toUpperCase()),
         items: groupItems,
       }));
-  }, [filteredItems, filter]);
+  }, [filteredItems, filter, groupBy]);
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -293,9 +359,9 @@ export default function ClosetPage() {
           />
         </div>
 
-        <div className="flex gap-2 overflow-x-auto pb-1 mb-4 -mx-4 px-4">
+        <div className="flex gap-2 overflow-x-auto pb-1 mb-2 -mx-4 px-4">
           <button
-            onClick={() => setFilter("all")}
+            onClick={() => selectFilter("all")}
             className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-medium ${
               filter === "all"
                 ? "bg-emerald-600 text-cream"
@@ -307,7 +373,7 @@ export default function ClosetPage() {
           {CATEGORIES.map((c) => (
             <button
               key={c.value}
-              onClick={() => setFilter(c.value)}
+              onClick={() => selectFilter(c.value)}
               className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-medium ${
                 filter === c.value
                   ? "bg-emerald-600 text-cream"
@@ -318,6 +384,25 @@ export default function ClosetPage() {
             </button>
           ))}
         </div>
+
+        {filter !== "all" && GROUPING_OPTIONS[filter] ? (
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 mb-4 -mx-4 px-4">
+            <span className="shrink-0 text-[11px] text-stone-400">Group by</span>
+            {GROUPING_OPTIONS[filter].map((opt) => (
+              <button
+                key={opt.key}
+                onClick={() => setGroupBy(opt.key)}
+                className={`shrink-0 px-2.5 py-1 rounded-full text-[11px] ${
+                  groupBy === opt.key
+                    ? "bg-stone-700 text-cream"
+                    : "bg-cream-100 text-stone-500"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
 
         {uploadError ? (
           <div className="mb-3 rounded-xl bg-clay-50 text-clay-700 text-xs px-3 py-2">

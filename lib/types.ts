@@ -25,11 +25,11 @@ export const SUBCATEGORY_SUGGESTIONS: Record<ItemCategory, string[]> = {
     // Going-out styles
     "peplum top", "wrap top", "halter top", "off-shoulder top", "tunic",
   ],
-  bottom: ["jeans", "trousers", "shorts", "skirt", "leggings", "skort"],
+  bottom: ["jeans", "pants", "shorts", "skirt", "leggings", "skort"],
   dress: ["mini", "midi", "maxi", "gown"],
   set: ["matching set", "jumpsuit", "romper", "bathing suit", "sweatsuit", "tracksuit", "loungewear"],
   outerwear: ["jacket", "coat", "blazer", "cardigan", "vest"],
-  shoes: ["sneakers", "heels", "boots", "flats", "sandals"],
+  shoes: ["sneakers", "heels", "boots", "flats", "sandals", "flip flops", "slides"],
   accessory: [
     "bag", "jewelry", "jewelry set", "belt", "hat", "sunglasses", "scarf",
     "socks", "tights", "stockings",

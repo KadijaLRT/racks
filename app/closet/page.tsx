@@ -82,6 +82,34 @@ export default function ClosetPage() {
     });
   }, [items, filter, search]);
 
+  // Once a specific category is selected (not "All"), group the grid
+  // into labeled sections by subcategory (t-shirts separate from
+  // sweaters separate from hoodies, sneakers separate from heels, mini
+  // dresses separate from maxi, etc.) instead of one flat list, so
+  // browsing a category is organized by what an item actually is, not
+  // just chronological order. Left flat for "All", since mixing
+  // subcategory vocabularies across categories (a bag next to a
+  // sweater) wouldn't read as a coherent grouping.
+  const groupedSections = useMemo(() => {
+    if (filter === "all") return null;
+    const groups = new Map<string, ClosetItem[]>();
+    for (const item of filteredItems) {
+      const key = (item?.subcategory || "").trim().toLowerCase() || "other";
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(item);
+    }
+    return [...groups.entries()]
+      .sort((a, b) => {
+        if (a[0] === "other") return 1;
+        if (b[0] === "other") return -1;
+        return b[1].length - a[1].length; // largest groups first
+      })
+      .map(([key, groupItems]) => ({
+        label: key === "other" ? "Other" : key.replace(/\b\w/g, (c) => c.toUpperCase()),
+        items: groupItems,
+      }));
+  }, [filteredItems, filter]);
+
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
@@ -356,6 +384,22 @@ export default function ClosetPage() {
                 ? "Your closet is empty. Add your first item to get started."
                 : "No items match that search or filter."}
             </p>
+          </div>
+        ) : groupedSections && groupedSections.length > 1 ? (
+          <div className="space-y-5">
+            {groupedSections.map((section) => (
+              <div key={section.label}>
+                <p className="text-xs font-medium text-stone-500 mb-2">
+                  {section.label}{" "}
+                  <span className="text-stone-400">({section.items.length})</span>
+                </p>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  {section.items.map((item) => (
+                    <ItemCard key={item.id} item={item} onSelect={setSelected} />
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">

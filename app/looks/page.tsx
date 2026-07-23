@@ -24,6 +24,7 @@ import {
 } from "@/lib/storage";
 import type { ClosetItem, WigItem, HairProfile, ColorProfile, GeneratedLook, UserMeasurements } from "@/lib/types";
 import { buildLocalLook } from "@/lib/localLookBuilder";
+import { stripImagesForPrompt } from "@/lib/stripImagesForPrompt";
 
 const QUICK_PROMPTS = [
   "Work meeting",
@@ -141,7 +142,7 @@ export default function LooksPage() {
         body: JSON.stringify({
           prompt: activePrompt,
           mood,
-          items: closetItems,
+          items: stripImagesForPrompt(closetItems),
           wigs,
           hairProfile,
           colorProfile,
@@ -231,14 +232,14 @@ export default function LooksPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          candidateItem: item,
+          candidateItem: stripImagesForPrompt([item])[0],
           currentLook: {
             hairstyle: result.hairstyle,
             makeup: result.makeup,
             reasoning: result.reasoning,
           },
           prompt: prompt.trim(),
-          chosenItems,
+          chosenItems: stripImagesForPrompt(chosenItems),
         }),
       });
       const data = await res.json().catch(() => ({}));

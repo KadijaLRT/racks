@@ -41,7 +41,15 @@ function stripFormattingFragments(input: string): string {
 export function sanitizeGroqText(input: unknown): string {
   if (typeof input !== "string" || input.length === 0) return "";
 
-  let clean = input;
+  // Cheap pre-trim before the more expensive regex passes below: a
+  // multi-megabyte string (e.g. scraped page content) would otherwise
+  // get fully processed by every regex before the length cap at the
+  // end ever kicks in. Padded generously (4x) since the regex passes
+  // can shrink the string (stripped fences/control chars), so trimming
+  // too tight here could cut content that would've fit after cleanup.
+  let clean = input.length > MAX_FIELD_LENGTH * 4
+    ? input.slice(0, MAX_FIELD_LENGTH * 4)
+    : input;
   clean = stripControlCharacters(clean);
   clean = normalizeLineBreaks(clean);
   clean = stripFormattingFragments(clean);
@@ -99,9 +107,6 @@ export function formatTagsCompact(tags: Record<string, string> | undefined | nul
 
 /** Validates a data URL image before it's sent to a vision model. */
 export function isSafeImageDataUrl(value: unknown): value is string {
-  return (
-    typeof value === "string" &&
-    /^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(value) &&
-    value.length < 8_000_000 // ~6MB decoded ceiling, avoids oversized payloads
-  );
+  if (typeof value !== "string" || value.length >= 8_000_000) return false;
+  return /^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(value);
 }

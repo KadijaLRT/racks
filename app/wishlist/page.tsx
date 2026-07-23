@@ -7,6 +7,7 @@ import { fileToResizedDataUrl } from "@/lib/image";
 import { wishlistStore, closetStore, measurementsStore } from "@/lib/storage";
 import type { WishlistItem, ClosetItem, UserMeasurements } from "@/lib/types";
 import { categoryEmoji } from "@/lib/categories";
+import { stripImagesForPrompt } from "@/lib/stripImagesForPrompt";
 
 interface CartAnalysis {
   colorCohesion: string;
@@ -97,7 +98,7 @@ export default function WishlistPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           newItem: { name: item.name, category: item.category, tags: item.tags },
-          closetItems,
+          closetItems: stripImagesForPrompt(closetItems),
           measurements,
         }),
       });
@@ -168,7 +169,10 @@ export default function WishlistPage() {
       const res = await fetch("/api/analyze-cart", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wishlistItems: items, closetItems }),
+        body: JSON.stringify({
+          wishlistItems: stripImagesForPrompt(items),
+          closetItems: stripImagesForPrompt(closetItems),
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (data?.error) throw new Error(data.error);

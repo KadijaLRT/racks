@@ -17,6 +17,7 @@ import {
   incrementTimesWorn,
 } from "@/lib/storage";
 import type { ClosetItem, WigItem, HairProfile, ColorProfile } from "@/lib/types";
+import { stripImagesForPrompt } from "@/lib/stripImagesForPrompt";
 
 const INTENTIONS = ["Love", "Confidence", "Prosperity", "Protection", "Clarity", "Opportunity"];
 
@@ -103,7 +104,7 @@ export default function ManifestPage() {
         body: JSON.stringify({
           intention,
           zodiacSign,
-          items: closetItems,
+          items: stripImagesForPrompt(closetItems),
           wigs,
           hairProfile,
           colorProfile,

@@ -17,7 +17,17 @@ import type {
 // ---- id + prefix helpers -------------------------------------------------
 
 function makeId(): string {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  // crypto.randomUUID is available in all modern browsers and Node 19+;
+  // the previous timestamp+Math.random scheme could collide under
+  // concurrent creation (e.g. bulk import's Promise.all firing many
+  // closetStore.create() calls within the same millisecond), silently
+  // overwriting one item with another since the ID is the storage key.
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}-${Math.random()
+    .toString(36)
+    .slice(2, 10)}`;
 }
 
 /**

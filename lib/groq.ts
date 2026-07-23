@@ -85,13 +85,23 @@ async function callGroq(
   opts: GroqCallOptions,
   apiKey: string
 ) {
-  return fetch(GROQ_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
+  // Without a timeout, a hung/slow Groq response holds the connection
+  // (and the exclusive lock below) indefinitely until the hosting
+  // platform kills the function externally — at which point our own
+  // `finally` block never runs, permanently wedging the lock for that
+  // warm instance. An explicit abort guarantees this call always
+  // resolves or rejects within a bounded time.
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 25_000);
+  try {
+    return await fetch(GROQ_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
       model: opts.model,
       messages,
       temperature: opts.temperature ?? 0.4,
@@ -130,8 +140,11 @@ async function callGroq(
             reasoning_effort: opts.model.includes("qwen") ? "none" : "low",
           }
         : {}),
-    }),
-  });
+      }),
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 // Module-level pacer: every call to Groq (across every route in the
@@ -174,7 +187,13 @@ async function waitForTurn(): Promise<void> {
 // concurrent serverless invocations. For the realistic single-person
 // usage this app is built for, that's good enough in practice.
 let activeLabel: string | null = null;
-
+let activeLabelSetAt = 0;
+// If the hosting platform kills a function externally (its own request
+// timeout, not a JS exception), our `finally` block that clears the
+// lock never runs. Without a TTL, that permanently wedges every AI
+// feature on that warm instance until it's eventually recycled. This
+// bounds the damage to, at most, this many milliseconds.
+const LOCK_STALE_MS = 30_000;
 
 function throwFormattedRateLimitError(res: Response): never {
   const retryAfterHeader = res.headers.get("retry-after");
@@ -201,16 +220,28 @@ export async function groqChat(
     );
   }
 
-  if (activeLabel) {
+  if (activeLabel && Date.now() - activeLabelSetAt < LOCK_STALE_MS) {
     throw new Error(
       `Another AI action ("${activeLabel}") is already running. Wait for it to finish, then try again.`
     );
   }
   activeLabel = opts.label || "an AI request";
+  activeLabelSetAt = Date.now();
 
   try {
-    const isJsonValidationFailure = (text: string) =>
-      text.includes("json_validate_failed") || text.includes("failed_generation");
+    const isJsonValidationFailure = (text: string) => {
+      try {
+        const parsed = JSON.parse(text);
+        if (parsed?.error?.code) {
+          return parsed.error.code === "json_validate_failed";
+        }
+      } catch {
+        // Body wasn't JSON at all, fall through to substring matching.
+      }
+      // Fallback for the rare case Groq returns a non-JSON error body,
+      // or as a safety net if the error shape changes unexpectedly.
+      return text.includes("json_validate_failed") || text.includes("failed_generation");
+    };
 
     await waitForTurn();
     let res = await callGroq(messages, opts, apiKey);
@@ -309,6 +340,7 @@ export async function groqChat(
     return data?.choices?.[0]?.message?.content || "";
   } finally {
     activeLabel = null;
+    activeLabelSetAt = 0;
   }
 }
 

@@ -8,6 +8,7 @@ const CATEGORY_FIELDS: Record<string, string> = {
   bottom: "type (jeans/pants/skirt/shorts/etc), color, pattern, material, fit, formality, season",
   dress: "silhouette, color, pattern, material, sleeve length, formality, season",
   set: "matching set type (co-ord/two-piece/tracksuit/pajama set etc), color, pattern, material, formality, season",
+  swimwear: "type (bikini/monokini/one-piece/tankini/cover-up/rash guard), color, pattern, top style, bottom style",
   outerwear: "type (blazer/coat/jacket/cardigan), color, material, formality, season",
   shoes: "type (sneakers/boots/heels/flats/sandals), color, heel height, occasion",
   accessory: "type (jewelry/bag/hat/belt/scarf/sunglasses), color, material, occasion",

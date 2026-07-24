@@ -12,6 +12,7 @@ export type ItemCategory =
   | "outerwear"
   | "shoes"
   | "accessory"
+  | "swimwear"
   | "makeup";
 
 export const SUBCATEGORY_SUGGESTIONS: Record<ItemCategory, string[]> = {
@@ -27,13 +28,14 @@ export const SUBCATEGORY_SUGGESTIONS: Record<ItemCategory, string[]> = {
   ],
   bottom: ["jeans", "pants", "shorts", "skirt", "leggings", "skort"],
   dress: ["mini", "midi", "maxi", "gown"],
-  set: ["matching set", "jumpsuit", "romper", "bathing suit", "sweatsuit", "tracksuit", "loungewear"],
+  set: ["matching set", "jumpsuit", "romper", "sweatsuit", "tracksuit", "loungewear"],
   outerwear: ["jacket", "coat", "blazer", "cardigan", "vest"],
   shoes: ["sneakers", "heels", "boots", "flats", "sandals", "flip flops", "slides"],
   accessory: [
     "bag", "jewelry", "jewelry set", "belt", "hat", "sunglasses", "scarf",
     "socks", "tights", "stockings",
   ],
+  swimwear: ["bikini", "monokini", "one-piece", "tankini", "cover-up", "rash guard"],
   makeup: ["face", "eyes", "lips", "cheeks"],
 };
 

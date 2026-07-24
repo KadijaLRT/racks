@@ -5,6 +5,7 @@ export const CATEGORIES: { value: ItemCategory; label: string; emoji: string }[]
   { value: "bottom", label: "Bottoms", emoji: "\u{1F456}" },
   { value: "dress", label: "Dresses", emoji: "\u{1F457}" },
   { value: "set", label: "Sets", emoji: "\u{1F9E5}" },
+  { value: "swimwear", label: "Swimwear", emoji: "\u{1FA71}" },
   { value: "outerwear", label: "Outerwear", emoji: "\u{1F9E3}" },
   { value: "shoes", label: "Shoes", emoji: "\u{1F45F}" },
   { value: "accessory", label: "Accessories", emoji: "\u{1F45C}" },

@@ -111,6 +111,12 @@ export default function ClosetPage() {
       { label: "Material", key: "material" },
       { label: "Color", key: "color" },
     ],
+    swimwear: [
+      { label: "Type", key: "subcategory" },
+      { label: "Top Style", key: "swimsuitTop" },
+      { label: "Bottom Style", key: "swimsuitBottom" },
+      { label: "Color", key: "color" },
+    ],
     makeup: [
       { label: "Type", key: "subcategory" },
       { label: "Makeup Type", key: "makeupType" },
@@ -591,6 +597,7 @@ export default function ClosetPage() {
         <ItemEditSheet
           key={selected.id}
           item={selected}
+          allItems={items}
           onClose={() => setSelected(null)}
           onSave={handleSave}
           onDelete={handleDelete}

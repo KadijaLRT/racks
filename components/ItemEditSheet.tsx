@@ -21,6 +21,11 @@ interface ItemEditSheetProps {
   onSave: (item: ClosetItem) => void | Promise<void>;
   onDelete: (id: string) => void;
   onRemix?: (item: ClosetItem) => void;
+  // Rest of the closet, used only to surface "Most used" subcategory
+  // chips (the person's own actual usage, not a generic list) above
+  // the full option set. Optional and safely omitted wherever the
+  // caller doesn't have it handy.
+  allItems?: ClosetItem[];
 }
 
 const LAUNDRY_OPTIONS: ClosetItem["laundryStatus"][] = ["clean", "dirty", "dry-clean"];
@@ -77,6 +82,7 @@ export default function ItemEditSheet({
   onSave,
   onDelete,
   onRemix,
+  allItems,
 }: ItemEditSheetProps) {
   const [name, setName] = useState(item?.name || "");
   const [nameAutoFillable, setNameAutoFillable] = useState(
@@ -121,6 +127,7 @@ export default function ItemEditSheet({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
+  const [subcategorySearch, setSubcategorySearch] = useState("");
   const [backImage, setBackImage] = useState<string | undefined>(item?.backImage);
   const [analyzingBack, setAnalyzingBack] = useState(false);
   const [backError, setBackError] = useState("");
@@ -451,6 +458,31 @@ export default function ItemEditSheet({
   // clears it back to freeform, tapping another replaces it outright.
   function renderSubcategoryQuickPicks(options: string[]) {
     if (!options || options.length === 0) return null;
+
+    // "Most used" reflects this person's own closet, not a generic
+    // popularity list, computed from whatever other items in the same
+    // category they've actually tagged. Only shown when there's real
+    // data to base it on, and only when not actively searching (it's
+    // a shortcut to skip scanning the full list, not useful once
+    // they've already started narrowing it down).
+    const mostUsed = (() => {
+      if (!allItems || subcategorySearch.trim()) return [];
+      const counts = new Map<string, number>();
+      for (const i of allItems) {
+        if (i.category !== category || !i.subcategory || i.id === item.id) continue;
+        const key = i.subcategory.trim().toLowerCase();
+        counts.set(key, (counts.get(key) || 0) + 1);
+      }
+      return [...counts.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([key]) => key);
+    })();
+
+    const filtered = subcategorySearch.trim()
+      ? options.filter((o) => o.toLowerCase().includes(subcategorySearch.trim().toLowerCase()))
+      : options;
+
     return (
       <div>
         <p className="text-[11px] text-stone-400 mb-1.5">
@@ -460,23 +492,58 @@ export default function ItemEditSheet({
             named it)
           </span>
         </p>
+        {options.length > 8 ? (
+          <input
+            value={subcategorySearch}
+            onChange={(e) => setSubcategorySearch(e.target.value)}
+            placeholder="Search types..."
+            className="w-full mb-2 rounded-xl border border-clay-100 px-3 py-1.5 text-xs bg-white"
+          />
+        ) : null}
+        {mostUsed.length > 0 ? (
+          <div className="mb-2">
+            <p className="text-[10px] text-stone-300 mb-1">Most used</p>
+            <div className="flex flex-wrap gap-2">
+              {mostUsed.map((opt) => (
+                <button
+                  key={`recent-${opt}`}
+                  type="button"
+                  onClick={() => setSubcategory((prev) => (prev === opt ? "" : opt))}
+                  className={`px-3 py-2 rounded-full text-xs min-h-[36px] capitalize ${
+                    subcategory === opt
+                      ? "bg-emerald-600 text-cream"
+                      : "bg-emerald-50 text-emerald-700"
+                  }`}
+                >
+                  ⭐ {opt}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
         <div className="flex flex-wrap gap-2">
-          {options.map((opt) => (
-            <button
-              key={opt}
-              type="button"
-              onClick={() =>
-                setSubcategory((prev) => (prev === opt ? "" : opt))
-              }
-              className={`px-3 py-2 rounded-full text-xs min-h-[36px] capitalize ${
-                subcategory === opt
-                  ? "bg-emerald-600 text-cream"
-                  : "bg-cream-100 text-stone-500"
-              }`}
-            >
-              {opt}
-            </button>
-          ))}
+          {filtered.length === 0 ? (
+            <p className="text-xs text-stone-400">
+              No match, type it directly in the field above.
+            </p>
+          ) : (
+            filtered.map((opt) => (
+              <button
+                key={opt}
+                type="button"
+                onClick={() =>
+                  setSubcategory((prev) => (prev === opt ? "" : opt))
+                }
+                className={`px-3 py-2 rounded-full text-xs min-h-[36px] capitalize ${
+                  subcategory === opt
+                    ? "bg-emerald-600 text-cream"
+                    : "bg-cream-100 text-stone-500"
+                }`}
+              >
+                {opt}
+              </button>
+            ))
+          )}
         </div>
       </div>
     );
@@ -635,7 +702,10 @@ export default function ItemEditSheet({
                   <label className="text-xs text-stone-500">Category</label>
                   <select
                     value={category}
-                    onChange={(e) => setCategory(e.target.value as ItemCategory)}
+                    onChange={(e) => {
+                      setCategory(e.target.value as ItemCategory);
+                      setSubcategorySearch("");
+                    }}
                     className="w-full mt-1 rounded-xl border border-clay-100 px-3 py-2 text-sm bg-white"
                   >
                     {CATEGORIES.map((c) => (
@@ -794,8 +864,7 @@ export default function ItemEditSheet({
                         : null}
                     </>
                   ) : null}
-                  {(category === "top" || category === "dress" || category === "set") &&
-                  subcategory.toLowerCase().includes("bathing suit") ? (
+                  {category === "swimwear" ? (
                     // Swimwear needs its own vocabulary entirely, none of
                     // the usual garment attributes (sleeve length, knit
                     // type, etc.) apply to it.

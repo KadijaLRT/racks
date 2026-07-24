@@ -8,6 +8,7 @@ const VALID_CATEGORIES: ItemCategory[] = [
   "bottom",
   "dress",
   "set",
+  "swimwear",
   "outerwear",
   "shoes",
   "accessory",

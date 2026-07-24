@@ -34,9 +34,15 @@ export function buildLocalPackingPlan(
   const shoes = byCategory("shoes");
   const outerwear = byCategory("outerwear");
   const accessories = byCategory("accessory");
+  const swimwear = byCategory("swimwear");
 
   if (shoes.length === 0) return null;
-  if (dresses.length === 0 && sets.length === 0 && (tops.length === 0 || bottoms.length === 0)) {
+  if (
+    dresses.length === 0 &&
+    sets.length === 0 &&
+    swimwear.length === 0 &&
+    (tops.length === 0 || bottoms.length === 0)
+  ) {
     return null;
   }
 
@@ -54,9 +60,15 @@ export function buildLocalPackingPlan(
     };
 
     const pickBase = () => {
-      const baseOptions: { type: "dress" | "set" | "top+bottom"; count: number }[] = [
+      // Swimwear is deliberately excluded from the everyday Looks/
+      // Manifest/Remix generators (a swimsuit isn't a sensible answer
+      // to "outfit for a work meeting"), but a multi-day trip is
+      // exactly the case where a beach/pool day is a real, expected
+      // part of the plan, so it's included here specifically.
+      const baseOptions: { type: "dress" | "set" | "top+bottom" | "swimwear"; count: number }[] = [
         { type: "dress" as const, count: dresses.length },
         { type: "set" as const, count: sets.length },
+        { type: "swimwear" as const, count: swimwear.length },
         {
           type: "top+bottom" as const,
           count: tops.length > 0 && bottoms.length > 0 ? Math.min(tops.length, bottoms.length) : 0,
@@ -68,6 +80,8 @@ export function buildLocalPackingPlan(
         addPick(weightedPick(dresses));
       } else if (chosen === "set") {
         addPick(weightedPick(sets));
+      } else if (chosen === "swimwear") {
+        addPick(weightedPick(swimwear));
       } else {
         const bottom = weightedPick(bottoms);
         addPick(bottom);
@@ -132,6 +146,7 @@ export function buildLocalPackingPlan(
     bottom: "bottom",
     dress: "dress",
     set: "set",
+    swimwear: "swimwear piece",
     outerwear: "outerwear piece",
     shoes: "pair of shoes",
     accessory: "accessory",
@@ -153,7 +168,7 @@ export function buildLocalPackingPlan(
   // the whole closet: (bases available) × (shoe options), capped to
   // something sane for small numbers.
   const baseCount =
-    usedItems.filter((i) => i.category === "dress" || i.category === "set").length +
+    usedItems.filter((i) => i.category === "dress" || i.category === "set" || i.category === "swimwear").length +
     Math.min(
       usedItems.filter((i) => i.category === "top").length,
       usedItems.filter((i) => i.category === "bottom").length

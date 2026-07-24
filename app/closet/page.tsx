@@ -107,6 +107,7 @@ export default function ClosetPage() {
     ],
     accessory: [
       { label: "Type", key: "subcategory" },
+      { label: "Jewelry Type", key: "jewelryType" },
       { label: "Material", key: "material" },
       { label: "Color", key: "color" },
     ],

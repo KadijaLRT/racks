@@ -387,6 +387,7 @@ export const JEWELRY_TYPE_OPTIONS = [
   "Anklet",
   "Brooch",
   "Body Chain",
+  "Pants Chain",
   "Nose Ring",
   "Hair Jewelry",
 ];

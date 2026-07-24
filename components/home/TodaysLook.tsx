@@ -76,7 +76,7 @@ export default function TodaysLook({ items }: { items: ClosetItem[] }) {
 
   if (!look) {
     return (
-      <div className="rounded-[28px] bg-white p-5 shadow-sm">
+      <div className="rounded-2xl bg-white p-5 shadow-sm">
         <p className="text-sm text-stone-500">
           Add a few more clean items (a top, a bottom or dress, and shoes) and
           your stylist will have a look ready here every day.
@@ -86,7 +86,7 @@ export default function TodaysLook({ items }: { items: ClosetItem[] }) {
   }
 
   return (
-    <div className="rounded-[28px] bg-white p-5 shadow-sm space-y-3">
+    <div className="rounded-2xl bg-white p-5 shadow-sm space-y-3">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-[10px] uppercase tracking-wide text-emerald-700 font-medium">

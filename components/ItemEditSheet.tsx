@@ -453,7 +453,13 @@ export default function ItemEditSheet({
     if (!options || options.length === 0) return null;
     return (
       <div>
-        <p className="text-[11px] text-stone-400 mb-1.5">Subcategory</p>
+        <p className="text-[11px] text-stone-400 mb-1.5">
+          Subcategory{" "}
+          <span className="text-stone-300">
+            (tap one below, or type anything in the field above, e.g. what AI
+            named it)
+          </span>
+        </p>
         <div className="flex flex-wrap gap-2">
           {options.map((opt) => (
             <button

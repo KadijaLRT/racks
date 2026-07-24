@@ -2,12 +2,19 @@
 
 import type { ClosetItem } from "@/lib/types";
 
-const PHASES: { label: string; categories: string[] }[] = [
+export const OUTFIT_PHASES: { label: string; categories: string[] }[] = [
   { label: "Base", categories: ["top", "bottom", "dress", "set"] },
   { label: "Outer", categories: ["outerwear"] },
   { label: "Shoes", categories: ["shoes"] },
   { label: "Accessories", categories: ["accessory"] },
 ];
+
+export function groupByPhase(resolved: ClosetItem[]) {
+  return OUTFIT_PHASES.map((phase) => ({
+    label: phase.label,
+    items: resolved.filter((i) => phase.categories.includes(i.category)),
+  })).filter((p) => p.items.length > 0);
+}
 
 export default function OutfitItemStrip({
   itemIds,
@@ -64,10 +71,7 @@ export default function OutfitItemStrip({
   // so the outfit reads as an assembled whole rather than an
   // undifferentiated row of thumbnails, one glance shows what's the
   // foundation vs. what's layered on top.
-  const phased = PHASES.map((phase) => ({
-    label: phase.label,
-    items: resolved.filter((i) => phase.categories.includes(i.category)),
-  })).filter((p) => p.items.length > 0);
+  const phased = groupByPhase(resolved);
 
   return (
     <div className="space-y-2">

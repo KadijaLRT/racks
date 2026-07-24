@@ -1,29 +1,28 @@
 // Builds an outfit entirely from local closet data, with zero AI
-// involvement and zero network calls. Unlike a pure random pick, this
-// actually respects formality/occasion: every candidate item is scored
-// on a 1 (loungewear) to 5 (formal) scale from its category,
-// subcategory, and tags, an occasion phrase (if given) is mapped to a
-// target formality range via keyword matching, and every piece in the
-// final outfit is constrained to a narrow formality band around that
-// target — so a sweatsuit (level 1) can no longer end up paired with
-// heels (level 4-5) just because both happened to be under-worn.
+// involvement and zero network calls. Selection is driven by what
+// actually matters when putting together an outfit: formality/occasion
+// fit (every candidate is scored 1-5 and constrained to a band around
+// the target), and color compatibility (each piece, once picked,
+// narrows what colors the next piece can be). Recency of wear plays no
+// role in selection at all — how often something's been worn says
+// nothing about whether it goes with what's already been picked.
 
 import type { ClosetItem } from "./types";
+import { colorsOf, isColorCompatibleWithAll } from "./colorCompatibility";
 
 export interface LocalLookResult {
   itemIds: string[];
   reasoning: string;
 }
 
-export function weightedPick<T extends { timesWorn?: number; pinned?: boolean }>(
+// Uniform random pick, with a light preference for pinned favorites
+// (an explicit "I like this" signal from the person, not an
+// algorithmic assumption). Wear count plays no role here at all.
+export function weightedPick<T extends { pinned?: boolean }>(
   candidates: T[]
 ): T | null {
   if (candidates.length === 0) return null;
-  const weights = candidates.map((c) => {
-    const worn = c.timesWorn ?? 0;
-    const base = 1 / (worn + 1);
-    return c.pinned ? base * 1.5 : base;
-  });
+  const weights = candidates.map((c) => (c.pinned ? 2 : 1));
   const total = weights.reduce((sum, w) => sum + w, 0);
   let roll = Math.random() * total;
   for (let i = 0; i < candidates.length; i++) {
@@ -31,6 +30,23 @@ export function weightedPick<T extends { timesWorn?: number; pinned?: boolean }>
     if (roll <= 0) return candidates[i];
   }
   return candidates[candidates.length - 1];
+}
+
+/**
+ * Picks from `candidates`, preferring whichever ones are color-
+ * compatible with everything already established in `referenceColors`
+ * (falls back to the full candidate list if none are compatible,
+ * rather than failing to pick anything at all).
+ */
+export function pickColorCompatible<T extends { pinned?: boolean; tags?: Record<string, string> }>(
+  candidates: T[],
+  referenceColors: string[]
+): T | null {
+  if (candidates.length === 0) return null;
+  const compatible = candidates.filter((c) =>
+    isColorCompatibleWithAll(colorsOf(c.tags?.color), referenceColors)
+  );
+  return weightedPick(compatible.length > 0 ? compatible : candidates);
 }
 
 // --- Formality scoring ---------------------------------------------
@@ -101,6 +117,18 @@ export function estimateFormality(item: ClosetItem): number {
   return best;
 }
 
+// Short, editorial-feeling label for a formality level, used to give
+// a generated outfit a name worth reading ("Off-Duty," "Sharp Edge")
+// instead of just listing items with no framing.
+export function vibeLabelForFormality(avgFormality: number): string {
+  const rounded = Math.round(avgFormality);
+  if (rounded <= 1) return "Off-Duty";
+  if (rounded === 2) return "Easy Day";
+  if (rounded === 3) return "Put Together";
+  if (rounded === 4) return "Sharp Edge";
+  return "Elevated";
+}
+
 // --- Occasion → target formality ------------------------------------
 
 const OCCASION_BANDS: { keywords: string[]; min: number; max: number }[] = [
@@ -164,12 +192,31 @@ function metalToneOf(item: ClosetItem): "gold" | "silver" | null {
 export function buildLocalLook(
   items: ClosetItem[],
   occasion?: string,
-  context?: string[]
+  context?: string[],
+  energy?: string
 ): LocalLookResult | null {
-  const wearable = (items || []).filter(
-    (i) => i?.laundryStatus === "clean" && i?.category !== "makeup"
+  let wearable = (items || []).filter(
+    (i) => i?.laundryStatus === "clean" && i?.category !== "makeup" && i?.closetStatus !== "store"
   );
   if (wearable.length === 0) return null;
+
+  const energyText = (energy || "").toLowerCase();
+  const sensoryFriendly = /sensory/.test(energyText);
+  const lowEnergy = /low energy|one-and-done/.test(energyText);
+  const armorMode = /confidence|armor/.test(energyText);
+
+  // Sensory-friendly excludes anything commonly stiff, tight, or
+  // scratchy, applied before anything else so it's a hard constraint
+  // on the whole pool, not a tiebreak. Falls back to the unfiltered
+  // pool only if it would otherwise leave nothing to choose from at
+  // all, rather than silently ignoring the request.
+  if (sensoryFriendly) {
+    const gentle = wearable.filter((i) => {
+      const text = [i.subcategory, ...Object.values(i.tags || {})].join(" ").toLowerCase();
+      return !/corset|bustier|underwire|structured|stiff|scratchy|turtleneck|skinny|bodycon/.test(text);
+    });
+    if (gentle.length > 0) wearable = gentle;
+  }
 
   const contextText = (context || []).join(" ").toLowerCase();
   const avoidOpenToe = /chilly|rain/.test(contextText);
@@ -192,6 +239,14 @@ export function buildLocalLook(
       );
       return { min: Math.max(1, center - 1), max: Math.min(5, center + 1) };
     })();
+
+  // Armor mode: shift the whole band up a notch (capped at 5), since
+  // structured/tailored/sharper pieces are what this state is asking
+  // for, not just "whatever was already going to be picked."
+  if (armorMode) {
+    band.min = Math.min(5, band.min + 1);
+    band.max = Math.min(5, band.max + 1);
+  }
 
   const inBand = (item: ClosetItem) => {
     const f = estimateFormality(item);
@@ -235,34 +290,52 @@ export function buildLocalLook(
   ].filter((o) => o.count > 0);
 
   if (baseOptions.length === 0) return null;
-  const chosenBase = baseOptions[Math.floor(Math.random() * baseOptions.length)].type;
+  // Low energy: weight heavily toward dress/set (one-and-done, no
+  // separates to coordinate) instead of a plain uniform pick across
+  // whatever base types happen to be available.
+  const chosenBase = (() => {
+    if (!lowEnergy) {
+      return baseOptions[Math.floor(Math.random() * baseOptions.length)].type;
+    }
+    const weighted = baseOptions.map((o) => ({
+      ...o,
+      weight: o.type === "top+bottom" ? o.count : o.count * 4,
+    }));
+    const total = weighted.reduce((sum, o) => sum + o.weight, 0);
+    let roll = Math.random() * total;
+    for (const o of weighted) {
+      roll -= o.weight;
+      if (roll <= 0) return o.type;
+    }
+    return weighted[weighted.length - 1].type;
+  })();
 
   const picked: ClosetItem[] = [];
   const descriptionParts: string[] = [];
+  // Tracks every color established so far, so each subsequent pick is
+  // filtered toward what actually goes with what's already chosen,
+  // rather than each category being picked in isolation.
+  let establishedColors: string[] = [];
+
+  function addPick(item: ClosetItem | null) {
+    if (!item) return;
+    picked.push(item);
+    descriptionParts.push(item.name);
+    establishedColors = [...establishedColors, ...colorsOf(item.tags?.color)];
+  }
 
   if (chosenBase === "dress") {
-    const dress = weightedPick(dresses);
-    if (dress) {
-      picked.push(dress);
-      descriptionParts.push(dress.name);
-    }
+    addPick(weightedPick(dresses));
   } else if (chosenBase === "set") {
-    const set = weightedPick(sets);
-    if (set) {
-      picked.push(set);
-      descriptionParts.push(set.name);
-    }
+    addPick(weightedPick(sets));
   } else {
-    const top = weightedPick(tops);
+    // Bottom picked first (usually the more color-neutral piece in
+    // practice, e.g. denim/black trousers), then the top picked to be
+    // color-compatible with it, rather than picking both blind.
     const bottom = weightedPick(bottoms);
-    if (top) {
-      picked.push(top);
-      descriptionParts.push(top.name);
-    }
-    if (bottom) {
-      picked.push(bottom);
-      descriptionParts.push(bottom.name);
-    }
+    addPick(bottom);
+    const top = pickColorCompatible(tops, establishedColors);
+    addPick(top);
   }
 
   // Weather context can rule out open-toe shoes (chilly/rainy) and
@@ -284,27 +357,18 @@ export function buildLocalLook(
     });
     if (comfortable.length > 0) shoeCandidates = comfortable;
   }
-
-  const shoe = weightedPick(shoeCandidates.length > 0 ? shoeCandidates : shoes);
-  if (shoe) {
-    picked.push(shoe);
-    descriptionParts.push(shoe.name);
-  }
+  addPick(pickColorCompatible(shoeCandidates.length > 0 ? shoeCandidates : shoes, establishedColors));
 
   // Outerwear: skip entirely for the most casual band (level 1) unless
   // weather calls for it, a blazer over a sweatsuit is its own kind of
   // mismatch, but a coat over a sweatsuit for a chilly/rainy day isn't.
   const outerwearChance = forceOuterwear ? 0.9 : 0.35;
   if ((band.max > 1 || forceOuterwear) && outerwear.length > 0 && Math.random() < outerwearChance) {
-    const jacket = weightedPick(outerwear);
-    if (jacket) {
-      picked.push(jacket);
-      descriptionParts.push(jacket.name);
-    }
+    addPick(pickColorCompatible(outerwear, establishedColors));
   }
 
-  // Accessories: coordinate metal tone with whatever's already been
-  // picked (e.g. gold shoe hardware) rather than picking blind.
+  // Accessories: coordinate both metal tone (gold shoe hardware, e.g.)
+  // and color with whatever's already been picked, rather than blind.
   if (accessories.length > 0) {
     const establishedTone = picked
       .map(metalToneOf)
@@ -315,28 +379,38 @@ export function buildLocalLook(
           return tone === null || tone === establishedTone;
         })
       : accessories;
-    const pool = [...(toneFiltered.length > 0 ? toneFiltered : accessories)];
+    let pool = [...(toneFiltered.length > 0 ? toneFiltered : accessories)];
 
-    const accessoryCount = Math.random() < 0.15 ? 0 : Math.random() < 0.75 ? 1 : 2;
+    const accessoryCount = lowEnergy
+      ? Math.random() < 0.5
+        ? 0
+        : 1
+      : Math.random() < 0.15
+      ? 0
+      : Math.random() < 0.75
+      ? 1
+      : 2;
     for (let i = 0; i < accessoryCount && pool.length > 0; i++) {
-      const chosen = weightedPick(pool);
+      const chosen = pickColorCompatible(pool, establishedColors);
       if (!chosen) break;
-      picked.push(chosen);
-      descriptionParts.push(chosen.name);
-      const idx = pool.findIndex((p) => p.id === chosen.id);
-      if (idx >= 0) pool.splice(idx, 1);
+      addPick(chosen);
+      pool = pool.filter((p) => p.id !== chosen.id);
     }
   }
 
   if (picked.length === 0) return null;
 
-  const neglectedPiece = picked.find((p) => (p.timesWorn ?? 0) <= 1);
-  const base = neglectedPiece
-    ? `A pairing of ${descriptionParts.join(", ")}, put together to give your "${neglectedPiece.name}" some wear since it hasn't been out much.`
-    : `A pairing of ${descriptionParts.join(", ")}, picked from your closet.`;
+  const base = `A pairing of ${descriptionParts.join(", ")}, matched on color and kept to a consistent style.`;
+  const energyNote = sensoryFriendly
+    ? " Kept to soft, non-restrictive pieces."
+    : lowEnergy
+    ? " One-and-done, nothing to coordinate."
+    : armorMode
+    ? " Leaned structured and sharp for extra presence."
+    : "";
   const reasoning = targetBand
-    ? `${base} Kept everything at a similar, ${occasion ? "occasion-appropriate" : "matching"} formality level.`
-    : base;
+    ? `${base} Kept everything at a similar, ${occasion ? "occasion-appropriate" : "matching"} formality level.${energyNote}`
+    : `${base}${energyNote}`;
 
   return {
     itemIds: picked.map((p) => p.id),

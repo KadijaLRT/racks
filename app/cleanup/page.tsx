@@ -7,6 +7,7 @@ import BottomNav from "@/components/BottomNav";
 import { closetStore } from "@/lib/storage";
 import type { ClosetItem } from "@/lib/types";
 import { buildLocalCleanupSuggestions } from "@/lib/localCleanup";
+import RemixSheet from "@/components/RemixSheet";
 
 const STATUS_OPTIONS: { value: NonNullable<ClosetItem["closetStatus"]>; label: string }[] = [
   { value: "keep", label: "Keep" },
@@ -24,11 +25,14 @@ interface Suggestion {
 export default function CleanupPage() {
   const router = useRouter();
   const [items, setItems] = useState<ClosetItem[]>([]);
+  const [allItems, setAllItems] = useState<ClosetItem[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [suggestions, setSuggestions] = useState<Record<string, Suggestion>>({});
+  const [remixItem, setRemixItem] = useState<ClosetItem | null>(null);
 
   useEffect(() => {
     closetStore.getAll().then((all) => {
+      setAllItems(all || []);
       const rarelyWorn = (all || [])
         .filter((i) => !i.closetStatus || i.closetStatus === "keep")
         .filter((i) => i.category !== "makeup")
@@ -132,13 +136,23 @@ export default function CleanupPage() {
 
                     {suggestion ? (
                       <div className="mb-2">
-                        <button
-                          onClick={() => setStatus(item, suggestion.action)}
-                          className="text-xs bg-emerald-50 text-emerald-700 px-3 py-2 rounded-full font-medium min-h-[36px]"
-                        >
-                          Suggested: {suggestion.action}
-                        </button>
-                        <p className="text-xs text-stone-400 mt-1">{suggestion.reason}</p>
+                        <p className="text-xs text-stone-500 mb-1.5">{suggestion.reason}</p>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            onClick={() => setRemixItem(item)}
+                            className="text-xs bg-white border border-emerald-200 text-emerald-700 px-3 py-2 rounded-full font-medium min-h-[36px]"
+                          >
+                            Build a look around it
+                          </button>
+                          <button
+                            onClick={() => setStatus(item, suggestion.action)}
+                            className="text-xs bg-emerald-50 text-emerald-700 px-3 py-2 rounded-full font-medium min-h-[36px]"
+                          >
+                            {suggestion.action === "donate" || suggestion.action === "sell"
+                              ? `Find it a new home (${suggestion.action})`
+                              : `${suggestion.action.charAt(0).toUpperCase()}${suggestion.action.slice(1)} it`}
+                          </button>
+                        </div>
                       </div>
                     ) : null}
 
@@ -160,6 +174,14 @@ export default function CleanupPage() {
           </div>
         )}
       </div>
+
+      {remixItem ? (
+        <RemixSheet
+          anchorItem={remixItem}
+          closetItems={allItems}
+          onClose={() => setRemixItem(null)}
+        />
+      ) : null}
 
       <BottomNav />
     </main>

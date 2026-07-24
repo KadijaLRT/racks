@@ -777,6 +777,18 @@ export interface AppSettings {
   autoTagOnUpload?: boolean;
 }
 
+// Caches the home screen's "Today's Look" so it stays stable across
+// visits within the same day (an editorial hero card that changes on
+// every app open would feel random, not curated) rather than
+// regenerating from scratch each time. Built entirely locally, zero AI.
+export interface DailyLook {
+  date: string; // YYYY-MM-DD, local date the look was generated for
+  itemIds: string[];
+  reasoning: string;
+  vibeLabel: string;
+  updatedAt: number;
+}
+
 export interface UpcomingPlan {
   id: string;
   title: string;

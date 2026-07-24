@@ -8,6 +8,7 @@
 
 import type { ClosetItem } from "./types";
 import { weightedPick, estimateFormality } from "./localLookBuilder";
+import { colorsOf, isColorCompatibleWithAll } from "./colorCompatibility";
 
 export interface LocalPackingPlan {
   packingList: string[];
@@ -21,7 +22,9 @@ export function buildLocalPackingPlan(
   items: ClosetItem[],
   days: number
 ): LocalPackingPlan | null {
-  const wearable = (items || []).filter((i) => i?.laundryStatus === "clean");
+  const wearable = (items || []).filter(
+    (i) => i?.laundryStatus === "clean" && i?.closetStatus !== "store"
+  );
   const byCategory = (cat: string) => wearable.filter((i) => i?.category === cat);
 
   const dresses = byCategory("dress");
@@ -43,6 +46,13 @@ export function buildLocalPackingPlan(
 
   for (let d = 0; d < dayCount; d++) {
     const picked: ClosetItem[] = [];
+    let establishedColors: string[] = [];
+    const addPick = (item: ClosetItem | null) => {
+      if (!item) return;
+      picked.push(item);
+      establishedColors = [...establishedColors, ...colorsOf(item.tags?.color)];
+    };
+
     const pickBase = () => {
       const baseOptions: { type: "dress" | "set" | "top+bottom"; count: number }[] = [
         { type: "dress" as const, count: dresses.length },
@@ -55,16 +65,16 @@ export function buildLocalPackingPlan(
       if (baseOptions.length === 0) return;
       const chosen = baseOptions[Math.floor(Math.random() * baseOptions.length)].type;
       if (chosen === "dress") {
-        const dress = weightedPick(dresses);
-        if (dress) picked.push(dress);
+        addPick(weightedPick(dresses));
       } else if (chosen === "set") {
-        const set = weightedPick(sets);
-        if (set) picked.push(set);
+        addPick(weightedPick(sets));
       } else {
-        const top = weightedPick(tops);
         const bottom = weightedPick(bottoms);
-        if (top) picked.push(top);
-        if (bottom) picked.push(bottom);
+        addPick(bottom);
+        const compatibleTops = tops.filter((t) =>
+          isColorCompatibleWithAll(colorsOf(t.tags?.color), establishedColors)
+        );
+        addPick(weightedPick(compatibleTops.length > 0 ? compatibleTops : tops));
       }
     };
     pickBase();
@@ -72,7 +82,7 @@ export function buildLocalPackingPlan(
     // Whatever the base's formality turns out to be, keep shoes and
     // any add-ons within one level of it rather than picking them
     // independently at random, otherwise a loungewear base can end up
-    // paired with dressy heels just because both were under-worn.
+    // paired with dressy heels for no reason connected to the outfit.
     const baseFormality =
       picked.length > 0
         ? Math.round(picked.reduce((sum, p) => sum + estimateFormality(p), 0) / picked.length)
@@ -85,17 +95,20 @@ export function buildLocalPackingPlan(
       });
       return filtered.length > 0 ? filtered : pool;
     };
+    const colorMatch = (pool: ClosetItem[]) => {
+      const filtered = pool.filter((i) =>
+        isColorCompatibleWithAll(colorsOf(i.tags?.color), establishedColors)
+      );
+      return filtered.length > 0 ? filtered : pool;
+    };
 
-    const shoe = weightedPick(inBand(shoes));
-    if (shoe) picked.push(shoe);
+    addPick(weightedPick(colorMatch(inBand(shoes))));
 
     if (band.max > 1 && outerwear.length > 0 && Math.random() < 0.4) {
-      const jacket = weightedPick(inBand(outerwear));
-      if (jacket) picked.push(jacket);
+      addPick(weightedPick(colorMatch(inBand(outerwear))));
     }
     if (accessories.length > 0 && Math.random() < 0.6) {
-      const accessory = weightedPick(accessories);
-      if (accessory) picked.push(accessory);
+      addPick(weightedPick(colorMatch(accessories)));
     }
 
     if (picked.length === 0) continue;

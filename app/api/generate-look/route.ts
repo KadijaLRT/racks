@@ -10,6 +10,7 @@ interface GenerateLookRequestBody {
   wigs?: WigItem[];
   hairProfile?: HairProfile | null;
   weather?: string;
+  energy?: string;
   colorProfile?: ColorProfile | null;
   measurements?: UserMeasurements | null;
   styleDescription?: string;
@@ -61,6 +62,7 @@ export async function POST(req: NextRequest) {
 
     const mood = sanitizeGroqText(body?.mood || "");
     const weather = sanitizeGroqText(body?.weather || "");
+    const energy = sanitizeGroqText(body?.energy || "");
     const styleDescription = sanitizeGroqText(body?.styleDescription || "");
     const instruction = sanitizeGroqText(body?.instruction || "");
     const styleKeywords = (Array.isArray(body?.styleKeywords) ? body!.styleKeywords : [])
@@ -73,7 +75,7 @@ export async function POST(req: NextRequest) {
     const previousLook = body?.previousLook || null;
 
     const wearable = items.filter(
-      (i) => i?.laundryStatus === "clean" && i?.category !== "makeup"
+      (i) => i?.laundryStatus === "clean" && i?.category !== "makeup" && i?.closetStatus !== "store"
     );
     const ownedMakeup = items.filter((i) => i?.category === "makeup");
 
@@ -159,6 +161,10 @@ export async function POST(req: NextRequest) {
       ? `Weather context: ${weather}`
       : "No weather data provided.";
 
+    const energyContext = energy
+      ? `Physical/mental capacity today: "${energy}". Treat this as a hard constraint, not flavor: if it mentions sensory sensitivity, exclude anything scratchy, stiff-collared, tight-waisted, or restrictive regardless of how well it otherwise fits the occasion; if it mentions low energy, strongly prefer a single one-and-done piece (a dress or matching set) over separates that need coordinating, and keep accessories minimal; if it mentions wanting confidence/armor, prefer structured, tailored, sharp-silhouette pieces and bolder colors over soft/relaxed ones.`
+      : "";
+
     const moodContext = mood
       ? `The user wants this look to make them feel: "${mood}". Let this emotional intent shape silhouette, color, and accessory choices as much as the occasion itself.`
       : "";
@@ -238,6 +244,7 @@ Return ONLY a JSON object with this exact shape:
 ${mood ? `Desired feeling: "${mood}"` : ""}
 
 ${weatherContext}
+${energyContext}
 
 ${moodContext}
 

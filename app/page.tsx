@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Shirt } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
 import NudgesList from "@/components/home/NudgesList";
+import TodaysLook from "@/components/home/TodaysLook";
 import UpcomingPlans from "@/components/home/UpcomingPlans";
 import { closetStore } from "@/lib/storage";
 import type { ClosetItem } from "@/lib/types";
@@ -40,6 +41,8 @@ export default function HomePage() {
             Here&apos;s what&apos;s happening with your closet.
           </p>
         </div>
+
+        {loaded ? <TodaysLook items={items} /> : null}
 
         <NudgesList items={items} />
 

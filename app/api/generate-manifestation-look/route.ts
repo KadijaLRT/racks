@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
     const colorProfile = body?.colorProfile || null;
 
     const wearable = items.filter(
-      (i) => i?.laundryStatus === "clean" && i?.category !== "makeup"
+      (i) => i?.laundryStatus === "clean" && i?.category !== "makeup" && i?.closetStatus !== "store"
     );
     const ownedMakeup = items.filter((i) => i?.category === "makeup");
 

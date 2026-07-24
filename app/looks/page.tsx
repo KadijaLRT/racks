@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Heart, Check, Sparkles, HelpCircle, BookMarked, Trash2, X } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
-import OutfitItemStrip from "@/components/OutfitItemStrip";
+import OutfitItemStrip, { groupByPhase } from "@/components/OutfitItemStrip";
 import HairstylePreview from "@/components/HairstylePreview";
 import StylingTipList from "@/components/StylingTipList";
 import {
@@ -24,6 +24,7 @@ import {
 } from "@/lib/storage";
 import type { ClosetItem, WigItem, HairProfile, ColorProfile, GeneratedLook, UserMeasurements } from "@/lib/types";
 import { buildLocalLook } from "@/lib/localLookBuilder";
+import { colorsOf, isColorCompatibleWithAll } from "@/lib/colorCompatibility";
 import { stripImagesForPrompt } from "@/lib/stripImagesForPrompt";
 
 const QUICK_PROMPTS = [
@@ -42,6 +43,18 @@ const MOOD_CHIPS = ["Powerful", "Comfortable", "Romantic", "Trendy", "Confident"
 // AI) builder, e.g. "Chilly" biases toward including outerwear and
 // away from open-toe shoes, not just decorative wording either way.
 const CONTEXT_CHIPS = ["Chilly, layering needed", "All-day walking", "Sitting at a desk", "Rainy"];
+// Distinct from mood (how you want to feel) and weather (external
+// conditions): this is about actual physical/mental bandwidth and
+// sensory needs right now, which matters at least as much as the
+// occasion itself. Feeds real filtering in the local builder (exclude
+// scratchy/restrictive pieces, bias toward one-and-done bases, bias
+// toward structured/tailored pieces) and gets passed to the AI prompt
+// as an explicit constraint, not just flavor text.
+const ENERGY_CHIPS = [
+  "Sensory-friendly, nothing tight or scratchy",
+  "Low energy, one-and-done",
+  "High confidence, armor mode",
+];
 
 const QUICK_REFINEMENTS = [
   "Dressier",
@@ -75,7 +88,21 @@ export default function LooksPage() {
   const [prompt, setPrompt] = useState("");
   const [mood, setMood] = useState("");
   const [context, setContext] = useState<string[]>([]);
+  const [energy, setEnergy] = useState("");
   const [swappingItem, setSwappingItem] = useState<ClosetItem | null>(null);
+  const [stepByStep, setStepByStep] = useState(false);
+  const [shakeEnabled, setShakeEnabled] = useState(false);
+  const [shakeSupported, setShakeSupported] = useState(false);
+  useEffect(() => {
+    // Legitimate one-time exception to the setState-in-effect rule:
+    // this reads browser feature support (window is undefined during
+    // SSR), it can't be computed during render without a hydration
+    // mismatch, and it only ever runs once on mount, not a cascading
+    // update loop.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setShakeSupported(typeof window !== "undefined" && "DeviceMotionEvent" in window);
+  }, []);
+  const [revealedPhaseCount, setRevealedPhaseCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<GeneratedResult | null>(null);
@@ -151,6 +178,7 @@ export default function LooksPage() {
           prompt: activePrompt,
           mood,
           weather: context.join(", "),
+          energy,
           items: stripImagesForPrompt(closetItems),
           wigs,
           hairProfile,
@@ -168,6 +196,7 @@ export default function LooksPage() {
         throw new Error("Couldn't put together a look from what's in your closet yet.");
       }
       setResult(data);
+      setRevealedPhaseCount(null);
       setRefinement("");
       setWhyNotOpen(false);
       setWhyNotAnswers({});
@@ -189,7 +218,7 @@ export default function LooksPage() {
   function buildWithoutAI() {
     setError("");
     setSavedMessage("");
-    const local = buildLocalLook(closetItems, prompt.trim(), context);
+    const local = buildLocalLook(closetItems, prompt.trim(), context, energy);
     if (!local) {
       setError(
         "Your closet doesn't have enough marked-clean items yet to build a full look (need a dress, a set, or a top and bottom, plus shoes)."
@@ -207,9 +236,72 @@ export default function LooksPage() {
       strengths: [],
       weaknesses: [],
     });
+    // Step-by-step reveals one layer (base, then outer, then shoes,
+    // then accessories) at a time instead of the whole outfit at once,
+    // since throwing a full 4-5 piece look at someone simultaneously
+    // is exactly the visual overload this mode exists to avoid. Only
+    // offered for the local build: it's instant, so pacing the reveal
+    // doesn't cost anything, whereas staging an AI result would either
+    // need multiple Groq calls or fake a delay for no real benefit.
+    setRevealedPhaseCount(stepByStep ? 1 : null);
     setRefinement("");
     setWhyNotOpen(false);
     setWhyNotAnswers({});
+  }
+
+  // Shake-to-shuffle: an opt-in physical-feeling way to trigger the
+  // local (zero AI, zero network) build, so getting unstuck doesn't
+  // require typing anything or waiting on a request. iOS 13+ requires
+  // an explicit permission prompt from a user gesture (handled in the
+  // toggle's onClick below), and most desktop browsers simply don't
+  // fire devicemotion at all, so this stays fully opt-in and invisible
+  // wherever it isn't supported rather than showing a broken control.
+  const buildWithoutAIRef = useRef(buildWithoutAI);
+  useEffect(() => {
+    buildWithoutAIRef.current = buildWithoutAI;
+  });
+
+  useEffect(() => {
+    if (!shakeEnabled) return;
+    let lastShakeAt = 0;
+    let lastAcceleration = { x: 0, y: 0, z: 0 };
+    const SHAKE_THRESHOLD = 15;
+    const MIN_INTERVAL_MS = 1500;
+
+    function handleMotion(e: DeviceMotionEvent) {
+      const acc = e.accelerationIncludingGravity;
+      if (!acc || acc.x === null || acc.y === null || acc.z === null) return;
+      const delta =
+        Math.abs(acc.x - lastAcceleration.x) +
+        Math.abs(acc.y - lastAcceleration.y) +
+        Math.abs(acc.z - lastAcceleration.z);
+      lastAcceleration = { x: acc.x, y: acc.y, z: acc.z };
+      const now = Date.now();
+      if (delta > SHAKE_THRESHOLD && now - lastShakeAt > MIN_INTERVAL_MS) {
+        lastShakeAt = now;
+        buildWithoutAIRef.current();
+      }
+    }
+
+    window.addEventListener("devicemotion", handleMotion);
+    return () => window.removeEventListener("devicemotion", handleMotion);
+  }, [shakeEnabled]);
+
+  async function enableShake() {
+    // iOS requires this to be requested from within a user gesture
+    // (this onClick), a raw useEffect can't ask for it.
+    const DeviceMotionEventWithPermission = DeviceMotionEvent as unknown as {
+      requestPermission?: () => Promise<"granted" | "denied">;
+    };
+    if (typeof DeviceMotionEventWithPermission.requestPermission === "function") {
+      try {
+        const permission = await DeviceMotionEventWithPermission.requestPermission();
+        if (permission !== "granted") return;
+      } catch {
+        return;
+      }
+    }
+    setShakeEnabled(true);
   }
 
   // Local, no AI, no network call: swapping one disliked or dirty item
@@ -224,9 +316,30 @@ export default function LooksPage() {
             i?.category === swappingItem.category &&
             i?.id !== swappingItem.id &&
             i?.laundryStatus === "clean" &&
+            i?.closetStatus !== "store" &&
             !(result?.itemIds || []).includes(i.id)
         )
-        .sort((a, b) => (a.timesWorn ?? 0) - (b.timesWorn ?? 0))
+        .map((i) => {
+          // Prioritize the closest match to what's being replaced, not
+          // wear history: same subcategory, same neckline/sleeve
+          // profile, and color-compatible with everything else still
+          // in the outfit, so a swap actually feels like a substitute
+          // rather than a random same-category item.
+          let score = 0;
+          if (i.subcategory && i.subcategory === swappingItem.subcategory) score += 3;
+          if (i.tags?.neckline && i.tags.neckline === swappingItem.tags?.neckline) score += 2;
+          if (i.tags?.sleeveLength && i.tags.sleeveLength === swappingItem.tags?.sleeveLength) score += 2;
+          if (i.tags?.sleeve && i.tags.sleeve === swappingItem.tags?.sleeve) score += 1;
+          const restOfOutfit = (result?.itemIds || [])
+            .filter((id) => id !== swappingItem.id)
+            .map((id) => closetItems.find((c) => c.id === id))
+            .filter(Boolean) as ClosetItem[];
+          const restColors = restOfOutfit.flatMap((r) => colorsOf(r.tags?.color));
+          if (isColorCompatibleWithAll(colorsOf(i.tags?.color), restColors)) score += 2;
+          return { item: i, score };
+        })
+        .sort((a, b) => b.score - a.score)
+        .map((s) => s.item)
     : [];
 
   function applySwap(newItem: ClosetItem) {
@@ -365,6 +478,27 @@ export default function LooksPage() {
             </div>
           </div>
 
+          <div>
+            <p className="text-xs text-stone-500 mb-1.5">
+              How&apos;s your energy today? (optional)
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {ENERGY_CHIPS.map((e) => (
+                <button
+                  key={e}
+                  onClick={() => setEnergy((prev) => (prev === e ? "" : e))}
+                  className={`px-3 py-1 rounded-full text-xs ${
+                    energy === e
+                      ? "bg-emerald-700 text-cream"
+                      : "bg-cream-100 text-stone-500"
+                  }`}
+                >
+                  {e}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <button
             onClick={() => generate()}
             disabled={loading}
@@ -385,6 +519,28 @@ export default function LooksPage() {
           >
             Build without AI
           </button>
+
+          <label className="flex items-center gap-2 text-xs text-stone-500 px-1">
+            <input
+              type="checkbox"
+              checked={stepByStep}
+              onChange={(e) => setStepByStep(e.target.checked)}
+              className="rounded"
+            />
+            Reveal one layer at a time
+          </label>
+
+          {shakeSupported ? (
+            <label className="flex items-center gap-2 text-xs text-stone-500 px-1">
+              <input
+                type="checkbox"
+                checked={shakeEnabled}
+                onChange={(e) => (e.target.checked ? enableShake() : setShakeEnabled(false))}
+                className="rounded"
+              />
+              Shake to shuffle (no AI)
+            </label>
+          ) : null}
         </div>
 
         {error ? (
@@ -407,11 +563,67 @@ export default function LooksPage() {
               ) : null}
             </div>
 
-            <OutfitItemStrip
-              itemIds={result.itemIds}
-              items={closetItems}
-              onSwap={(item) => setSwappingItem(item)}
-            />
+            {revealedPhaseCount !== null ? (
+              (() => {
+                const byId = new Map(closetItems.map((i) => [i.id, i]));
+                const resolved = result.itemIds
+                  .map((id) => byId.get(id))
+                  .filter(Boolean) as ClosetItem[];
+                const phases = groupByPhase(resolved);
+                const visible = phases.slice(0, revealedPhaseCount);
+                const hasMore = revealedPhaseCount < phases.length;
+                return (
+                  <div className="space-y-3">
+                    {visible.map((phase, i) => (
+                      <div key={phase.label}>
+                        <p className="text-[10px] text-stone-400 mb-1">{phase.label}</p>
+                        <div className="flex gap-2 overflow-x-auto pb-1">
+                          {phase.items.map((item) => (
+                            <button
+                              key={item.id}
+                              onClick={() => setSwappingItem(item)}
+                              className="shrink-0 w-16 aspect-[3/4] rounded-xl overflow-hidden bg-cream-100 relative"
+                              aria-label={`Swap ${item.name}`}
+                            >
+                              {item.image ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={item.image}
+                                  alt={item.name}
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : null}
+                              <span className="absolute bottom-0.5 right-0.5 bg-black/55 rounded-full px-1 py-0.5 text-[8px] text-cream">
+                                Swap
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                        {i === visible.length - 1 && hasMore ? (
+                          <button
+                            onClick={() => setRevealedPhaseCount((c) => (c ?? 0) + 1)}
+                            className="mt-2 w-full rounded-xl bg-stone-700 text-cream py-2 text-xs font-medium"
+                          >
+                            Looks good, next layer
+                          </button>
+                        ) : null}
+                      </div>
+                    ))}
+                    {!hasMore ? (
+                      <p className="text-[11px] text-emerald-700">
+                        That&apos;s the full outfit. Save it below, or keep swapping any piece.
+                      </p>
+                    ) : null}
+                  </div>
+                );
+              })()
+            ) : (
+              <OutfitItemStrip
+                itemIds={result.itemIds}
+                items={closetItems}
+                onSwap={(item) => setSwappingItem(item)}
+              />
+            )}
 
             {(() => {
               const outfitTopItem = closetItems.find(

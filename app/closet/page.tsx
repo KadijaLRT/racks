@@ -9,7 +9,8 @@ import RemixSheet from "@/components/RemixSheet";
 import BulkImportSheet from "@/components/BulkImportSheet";
 import { fileToResizedDataUrl, resizeDataUrlForAI } from "@/lib/image";
 import { extractDominantColorTag } from "@/lib/dominantColor";
-import { closetStore } from "@/lib/storage";
+import { computeHistoryTagSuggestions } from "@/lib/localTagHistory";
+import { closetStore, appSettingsStore } from "@/lib/storage";
 import type { ClosetItem, ItemCategory } from "@/lib/types";
 import { COLLECTION_OPTIONS, SMART_COLLECTIONS, COLOR_OPTIONS, PATTERN_OPTIONS, FABRIC_OPTIONS } from "@/lib/types";
 import { CATEGORIES } from "@/lib/categories";
@@ -51,6 +52,15 @@ export default function ClosetPage() {
   const [batchColor, setBatchColor] = useState("");
   const [batchPattern, setBatchPattern] = useState("");
   const [batchFabric, setBatchFabric] = useState("");
+  const [batchLaundryStatus, setBatchLaundryStatus] = useState<ClosetItem["laundryStatus"] | "">("");
+  const [dirtyOnly, setDirtyOnly] = useState(false);
+  const [defaultUploadTags, setDefaultUploadTags] = useState<{
+    collections?: string[];
+    color?: string;
+    pattern?: string;
+    fabric?: string;
+  }>({});
+  const [defaultsSheetOpen, setDefaultsSheetOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const bulkFileRef = useRef<HTMLInputElement>(null);
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -76,6 +86,9 @@ export default function ClosetPage() {
     closetStore.getAll().then((all) => {
       setItems(all || []);
       setLoaded(true);
+    });
+    appSettingsStore.get().then((settings) => {
+      if (settings?.defaultUploadTags) setDefaultUploadTags(settings.defaultUploadTags);
     });
   }, []);
 
@@ -157,6 +170,7 @@ export default function ClosetPage() {
     })();
 
     return (items || []).filter((item) => {
+      if (dirtyOnly && item?.laundryStatus !== "dirty") return false;
       if (browseMode === "category") {
         if (filter !== "all" && item?.category !== filter) return false;
       } else if (collectionFilter !== "all") {
@@ -178,7 +192,7 @@ export default function ClosetPage() {
         .toLowerCase();
       return haystack.includes(query);
     });
-  }, [items, filter, browseMode, collectionFilter, search]);
+  }, [items, filter, browseMode, collectionFilter, search, dirtyOnly]);
 
   // Once a specific category is selected (not "All"), group the grid
   // into labeled sections by whichever dimension is currently chosen
@@ -239,12 +253,28 @@ export default function ClosetPage() {
       // than guessing.
       const detectedColor = await extractDominantColorTag(dataUrl);
 
+      // Quick-Tap Preset Inheritance applied at the moment of upload,
+      // not just after the fact: whatever default template is set
+      // gets merged in automatically, entirely locally. The actual
+      // photo-based color detection wins over a generic default color
+      // when both would apply, since it's the more accurate signal.
+      const mergedTags: Record<string, string> = { ...(defaultUploadTags.pattern ? { pattern: defaultUploadTags.pattern } : {}), ...(defaultUploadTags.fabric ? { fabric: defaultUploadTags.fabric } : {}) };
+      if (detectedColor) {
+        mergedTags.color = detectedColor;
+      } else if (defaultUploadTags.color) {
+        mergedTags.color = defaultUploadTags.color;
+      }
+
       const saved = await closetStore.create({
         category: pendingCategory,
         subcategory: undefined,
         image: dataUrl,
         name: "Untitled item",
-        tags: detectedColor ? { color: detectedColor } : {},
+        tags: mergedTags,
+        collections:
+          defaultUploadTags.collections && defaultUploadTags.collections.length > 0
+            ? [...defaultUploadTags.collections]
+            : undefined,
         laundryStatus: "clean",
         timesWorn: 0,
       });
@@ -265,6 +295,26 @@ export default function ClosetPage() {
       (prev || []).map((i) => (i.id === updated.id ? updated : i))
     );
     setSelected(null);
+  }
+
+  // "Which items are actually clean again" is a real, common question
+  // once laundry's done, and marking each item clean one at a time is
+  // exactly the kind of busywork this should remove, not add. This
+  // marks every currently-dirty item clean in one action.
+  async function markAllDirtyClean() {
+    const dirty = items.filter((i) => i?.laundryStatus === "dirty");
+    if (dirty.length === 0) return;
+    const updated = await Promise.all(
+      dirty.map(async (item) => {
+        const next: ClosetItem = { ...item, laundryStatus: "clean" };
+        await closetStore.update(next);
+        return next;
+      })
+    );
+    const updatedById = new Map(updated.map((i) => [i.id, i]));
+    setItems((prev) => (prev || []).map((i) => updatedById.get(i.id) || i));
+    setDirtyOnly(false);
+    showAddedToast(`Marked ${updated.length} item${updated.length === 1 ? "" : "s"} clean`);
   }
 
   async function handleDelete(id: string) {
@@ -330,16 +380,42 @@ export default function ClosetPage() {
     }
   }
 
-  // Re-runs AI tagging for every item still named "Untitled item" (the
-  // fallback used when tagging failed at add-time, most commonly from
-  // hitting Groq's rate limit). Sequential with a short pause between
-  // calls, since firing them all at once is exactly what caused the
-  // rate limit in the first place. If a rate-limit-style error comes
-  // back mid-batch, this stops immediately rather than burning through
-  // the rest of the list on calls that would just fail the same way,
-  // and reports how far it got.
+  // A "scan" is just three concrete, checkable gaps: still named
+  // "Untitled item" (auto-tagging never ran or failed), no subcategory
+  // set (so it can't be grouped/browsed properly), or no color tag
+  // (used everywhere from grouping to outfit color-matching). Makeup
+  // is excluded from the color check since shade, not a garment
+  // color, is what actually matters there.
+  const scanResults = useMemo(() => {
+    const untitled = items.filter((i) => i?.name === "Untitled item");
+    const noSubcategory = items.filter((i) => !i?.subcategory?.trim());
+    const noColor = items.filter(
+      (i) => i?.category !== "makeup" && !i?.tags?.color
+    );
+    const flaggedIds = new Set([
+      ...untitled.map((i) => i.id),
+      ...noSubcategory.map((i) => i.id),
+      ...noColor.map((i) => i.id),
+    ]);
+    return {
+      untitledCount: untitled.length,
+      noSubcategoryCount: noSubcategory.length,
+      noColorCount: noColor.length,
+      flagged: items.filter((i) => flaggedIds.has(i.id)),
+    };
+  }, [items]);
+
+  // Re-runs AI tagging for every item the scan flagged (untitled, no
+  // subcategory, or no color) rather than only ones still literally
+  // named "Untitled item" — a full retag call fills in everything at
+  // once regardless of which specific field was missing. Sequential
+  // with a short pause between calls, since firing them all at once is
+  // exactly what caused the rate limit in the first place. If a
+  // rate-limit-style error comes back mid-batch, this stops
+  // immediately rather than burning through the rest of the list on
+  // calls that would just fail the same way, and reports how far it got.
   async function retagUntitledItems() {
-    const targets = (items || []).filter((i) => i?.name === "Untitled item");
+    const targets = scanResults.flagged;
     if (targets.length === 0) return;
 
     setRetagging(true);
@@ -405,6 +481,54 @@ export default function ClosetPage() {
     setRetagSummary({ retagged, stillFailed, stoppedEarly, reason: stopReason });
   }
 
+  // Entirely local, zero AI, zero network call: re-samples each
+  // flagged item's actual pixels for color, and applies your own
+  // tagging history for its subcategory where a real majority pattern
+  // exists. Can't fix a missing subcategory or name the way AI can
+  // (there's no way to guess those from pixels alone), so those items
+  // still show up in the next scan needing a manual pass or an actual
+  // AI retag, but this closes real gaps instantly and for free.
+  async function retagWithoutAI() {
+    const targets = scanResults.flagged;
+    if (targets.length === 0) return;
+    setRetagging(true);
+    setRetagSummary(null);
+    setRetagProgress({ done: 0, total: targets.length });
+
+    let updatedCount = 0;
+    const updates: ClosetItem[] = [];
+    for (let i = 0; i < targets.length; i++) {
+      const target = targets[i];
+      const detectedColor = !target.tags?.color
+        ? await extractDominantColorTag(target.image)
+        : null;
+      const historySuggestions = computeHistoryTagSuggestions(target, items);
+      const newTags = { ...(target.tags || {}) };
+      if (detectedColor) newTags.color = detectedColor;
+      for (const [k, v] of Object.entries(historySuggestions)) newTags[k] = v;
+
+      if (Object.keys(newTags).length !== Object.keys(target.tags || {}).length) {
+        const updated = { ...target, tags: newTags };
+        await closetStore.update(updated);
+        updates.push(updated);
+        updatedCount += 1;
+      }
+      setRetagProgress({ done: i + 1, total: targets.length });
+    }
+
+    if (updates.length > 0) {
+      const updatedById = new Map(updates.map((i) => [i.id, i]));
+      setItems((prev) => (prev || []).map((it) => updatedById.get(it.id) || it));
+    }
+
+    setRetagging(false);
+    setRetagSummary({
+      retagged: updatedCount,
+      stillFailed: targets.length - updatedCount,
+      stoppedEarly: false,
+    });
+  }
+
   async function handleBulkFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
@@ -452,6 +576,12 @@ export default function ClosetPage() {
               className="text-xs text-emerald-700 font-medium"
             >
               {selectMode ? "Cancel" : "Select"}
+            </button>
+            <button
+              onClick={() => setDefaultsSheetOpen(true)}
+              className="text-xs text-stone-500 font-medium"
+            >
+              Defaults
             </button>
           </div>
         </div>
@@ -587,10 +717,8 @@ export default function ClosetPage() {
         ) : null}
 
         {(() => {
-          const untitledCount = (items || []).filter(
-            (i) => i?.name === "Untitled item"
-          ).length;
-          if (untitledCount === 0 && !retagging && !retagSummary) return null;
+          const flaggedCount = scanResults.flagged.length;
+          if (flaggedCount === 0 && !retagging && !retagSummary) return null;
 
           return (
             <div className="mb-3 rounded-xl border border-clay-100 bg-white px-3 py-2.5">
@@ -622,18 +750,73 @@ export default function ClosetPage() {
                 </div>
               ) : (
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-xs text-stone-600">
-                    {untitledCount} item{untitledCount === 1 ? "" : "s"} still need
-                    {untitledCount === 1 ? "s" : ""} tagging.
-                  </p>
-                  <button
-                    onClick={retagUntitledItems}
-                    className="shrink-0 text-xs font-medium text-emerald-700 whitespace-nowrap"
-                  >
-                    Retag now
-                  </button>
+                  <div className="text-xs text-stone-600">
+                    <p>
+                      {flaggedCount} item{flaggedCount === 1 ? "" : "s"} need
+                      {flaggedCount === 1 ? "s" : ""} attention.
+                    </p>
+                    <p className="text-stone-400 mt-0.5">
+                      {[
+                        scanResults.untitledCount > 0
+                          ? `${scanResults.untitledCount} untitled`
+                          : null,
+                        scanResults.noSubcategoryCount > 0
+                          ? `${scanResults.noSubcategoryCount} no subcategory`
+                          : null,
+                        scanResults.noColorCount > 0
+                          ? `${scanResults.noColorCount} no color`
+                          : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </p>
+                  </div>
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    <button
+                      onClick={retagUntitledItems}
+                      className="text-xs font-medium text-emerald-700 whitespace-nowrap"
+                    >
+                      Retag now
+                    </button>
+                    <button
+                      onClick={retagWithoutAI}
+                      className="text-[11px] text-stone-500 whitespace-nowrap"
+                    >
+                      Retag without AI
+                    </button>
+                  </div>
                 </div>
               )}
+            </div>
+          );
+        })()}
+
+        {(() => {
+          const dirtyCount = items.filter((i) => i?.laundryStatus === "dirty").length;
+          if (dirtyCount === 0 && !dirtyOnly) return null;
+          return (
+            <div className="mb-3 rounded-xl border border-clay-100 bg-white px-3 py-2.5 flex items-center justify-between gap-2">
+              <p className="text-xs text-stone-600">
+                {dirtyOnly
+                  ? `Showing ${dirtyCount} item${dirtyCount === 1 ? "" : "s"} marked dirty`
+                  : `${dirtyCount} item${dirtyCount === 1 ? "" : "s"} marked dirty`}
+              </p>
+              <div className="flex items-center gap-3 shrink-0">
+                <button
+                  onClick={() => setDirtyOnly((v) => !v)}
+                  className="text-xs font-medium text-stone-500"
+                >
+                  {dirtyOnly ? "Show all" : "View"}
+                </button>
+                {dirtyCount > 0 ? (
+                  <button
+                    onClick={markAllDirtyClean}
+                    className="text-xs font-medium text-emerald-700 whitespace-nowrap"
+                  >
+                    Mark all clean
+                  </button>
+                ) : null}
+              </div>
             </div>
           );
         })()}
@@ -921,6 +1104,24 @@ export default function ClosetPage() {
                   ))}
                 </div>
               </div>
+              <div>
+                <p className="text-xs text-stone-500 mb-1.5">Laundry status</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {(["clean", "dirty", "dry-clean"] as const).map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => setBatchLaundryStatus((prev) => (prev === s ? "" : s))}
+                      className={`px-2.5 py-1.5 rounded-full text-xs border capitalize ${
+                        batchLaundryStatus === s
+                          ? "border-emerald-600 bg-emerald-50 text-emerald-700 font-medium"
+                          : "border-clay-100 text-stone-500 bg-transparent"
+                      }`}
+                    >
+                      {s === "dry-clean" ? "Dry-clean" : s}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
             <div className="px-5 py-4 border-t border-clay-100">
               <button
@@ -930,12 +1131,160 @@ export default function ClosetPage() {
                     color: batchColor || undefined,
                     pattern: batchPattern || undefined,
                     fabric: batchFabric || undefined,
+                    laundryStatus: batchLaundryStatus || undefined,
                   })
                 }
                 disabled={batchApplying}
                 className="w-full rounded-xl bg-emerald-600 text-cream py-3 text-sm font-medium disabled:opacity-60"
               >
                 {batchApplying ? "Applying..." : `Apply to ${selectedIds.size} items`}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {defaultsSheetOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex flex-col md:items-center md:justify-center bg-black/40"
+          onClick={() => setDefaultsSheetOpen(false)}
+        >
+          <div
+            className="mt-auto md:mt-0 md:max-w-sm md:w-full bg-cream rounded-t-3xl md:rounded-3xl max-h-[80vh] flex flex-col pb-safe"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-clay-100">
+              <div>
+                <h2 className="text-base font-medium text-stone-800">Defaults for new items</h2>
+                <p className="text-xs text-stone-400">
+                  Applied automatically to every new upload, entirely locally
+                </p>
+              </div>
+              <button onClick={() => setDefaultsSheetOpen(false)} aria-label="Close">
+                <span className="text-stone-400 text-lg">&times;</span>
+              </button>
+            </div>
+            <div className="overflow-y-auto px-5 py-4 space-y-4">
+              <div>
+                <p className="text-xs text-stone-500 mb-1.5">Collections</p>
+                <div className="flex flex-wrap gap-2">
+                  {COLLECTION_OPTIONS.map((c) => (
+                    <button
+                      key={c}
+                      onClick={() =>
+                        setDefaultUploadTags((prev) => {
+                          const current = prev.collections || [];
+                          return {
+                            ...prev,
+                            collections: current.includes(c)
+                              ? current.filter((x) => x !== c)
+                              : [...current, c],
+                          };
+                        })
+                      }
+                      className={`px-3 py-1.5 rounded-full text-xs border ${
+                        (defaultUploadTags.collections || []).includes(c)
+                          ? "border-emerald-600 bg-emerald-600 text-cream font-medium"
+                          : "border-clay-100 text-stone-500 bg-transparent"
+                      }`}
+                    >
+                      {c}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <p className="text-xs text-stone-500 mb-1.5">
+                  Color <span className="text-stone-300">(only used if a photo&rsquo;s own color can&rsquo;t be detected)</span>
+                </p>
+                <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto">
+                  {COLOR_OPTIONS.map((c) => (
+                    <button
+                      key={c}
+                      onClick={() =>
+                        setDefaultUploadTags((prev) => ({
+                          ...prev,
+                          color: prev.color === c ? undefined : c,
+                        }))
+                      }
+                      className={`px-2.5 py-1.5 rounded-full text-xs border ${
+                        defaultUploadTags.color === c
+                          ? "border-emerald-600 bg-emerald-50 text-emerald-700 font-medium"
+                          : "border-clay-100 text-stone-500 bg-transparent"
+                      }`}
+                    >
+                      {c}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <p className="text-xs text-stone-500 mb-1.5">Pattern</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {PATTERN_OPTIONS.map((p) => (
+                    <button
+                      key={p}
+                      onClick={() =>
+                        setDefaultUploadTags((prev) => ({
+                          ...prev,
+                          pattern: prev.pattern === p ? undefined : p,
+                        }))
+                      }
+                      className={`px-2.5 py-1.5 rounded-full text-xs border ${
+                        defaultUploadTags.pattern === p
+                          ? "border-emerald-600 bg-emerald-50 text-emerald-700 font-medium"
+                          : "border-clay-100 text-stone-500 bg-transparent"
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <p className="text-xs text-stone-500 mb-1.5">Fabric</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {FABRIC_OPTIONS.map((f) => (
+                    <button
+                      key={f}
+                      onClick={() =>
+                        setDefaultUploadTags((prev) => ({
+                          ...prev,
+                          fabric: prev.fabric === f ? undefined : f,
+                        }))
+                      }
+                      className={`px-2.5 py-1.5 rounded-full text-xs border ${
+                        defaultUploadTags.fabric === f
+                          ? "border-emerald-600 bg-emerald-50 text-emerald-700 font-medium"
+                          : "border-clay-100 text-stone-500 bg-transparent"
+                      }`}
+                    >
+                      {f}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="px-5 py-4 border-t border-clay-100 flex gap-2">
+              <button
+                onClick={async () => {
+                  const current = (await appSettingsStore.get()) || {};
+                  setDefaultUploadTags({});
+                  await appSettingsStore.save({ ...current, defaultUploadTags: {} });
+                }}
+                className="rounded-xl border border-clay-200 text-stone-500 px-4 py-3 text-sm font-medium"
+              >
+                Clear
+              </button>
+              <button
+                onClick={async () => {
+                  const current = (await appSettingsStore.get()) || {};
+                  await appSettingsStore.save({ ...current, defaultUploadTags });
+                  setDefaultsSheetOpen(false);
+                }}
+                className="flex-1 rounded-xl bg-emerald-600 text-cream py-3 text-sm font-medium"
+              >
+                Save defaults
               </button>
             </div>
           </div>

@@ -12,7 +12,6 @@ import type {
   StyleInspiration,
   UserMeasurements,
   AppSettings,
-  DailyLook,
 } from "./types";
 
 // ---- id + prefix helpers -------------------------------------------------
@@ -71,7 +70,6 @@ const SINGLETON_KEY = {
   styleProfile: "style-profile",
   measurements: "user-measurements",
   appSettings: "app-settings",
-  todaysLook: "todays-look",
 } as const;
 
 /**
@@ -224,10 +222,6 @@ export const measurementsStore = createSingleton<UserMeasurements>(
 
 export const appSettingsStore = createSingleton<AppSettings>(
   SINGLETON_KEY.appSettings
-);
-
-export const todaysLookStore = createSingleton<DailyLook>(
-  SINGLETON_KEY.todaysLook
 );
 
 // ---- cross-cutting helpers ----------------------------------------------

@@ -11,7 +11,7 @@ const CATEGORY_FIELDS: Record<string, string> = {
   swimwear: "type (bikini/monokini/one-piece/tankini/cover-up/rash guard), color, pattern, top style, bottom style",
   outerwear: "type (blazer/coat/jacket/cardigan), color, material, formality, season",
   shoes: "type (sneakers/boots/heels/flats/sandals), color, heel height, occasion",
-  accessory: "type (jewelry/bag/hat/belt/scarf/sunglasses), color, material, occasion",
+  accessory: "type (earrings/necklace/bracelet/ring/bag/hat/belt/scarf/sunglasses etc), color, material, occasion",
   makeup: "product type (foundation/lipstick/blush/etc), shade, finish, undertone",
 };
 
@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
       [
         buildTextMessage(
           "system",
-          `You are a fashion cataloguing assistant. Look at the photo of a single wardrobe item and return ONLY a JSON object, no other text. Shape: { "name": string (a short, natural descriptive name like a stylist would write it, e.g. "White oversized linen button-up"), "subcategory": string (one specific noun for the item's type, e.g. "blouse", "sneakers", "midi skirt"), "tags": { key/value attributes as strings } }. Base everything on exactly what's visible; don't guess a brand unless a logo is clearly visible.`
+          `You are a fashion cataloguing assistant. Look at the photo of a single wardrobe item and return ONLY a JSON object, no other text. Shape: { "name": string (a short, natural descriptive name like a stylist would write it, e.g. "White oversized linen button-up"), "subcategory": string (one specific noun for the item's type, e.g. "blouse", "sneakers", "midi skirt"), "tags": { key/value attributes as strings, include "brand" only if a logo, woven label, or other clear branding is visible in the photo } }. Base everything on exactly what's visible; never guess or infer a brand from style alone, only report one you can actually read or clearly recognize.`
         ),
         buildImageMessage(
           `This is a ${safeCategory}. Detect these attributes if visible: ${fields}. Return the JSON object only.`,

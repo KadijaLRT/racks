@@ -7,7 +7,7 @@
 // builders to assemble a day-by-day outfit plan.
 
 import type { ClosetItem } from "./types";
-import { weightedPick, estimateFormality } from "./localLookBuilder";
+import { weightedPick, estimateFormality, estimateSeasonWeight } from "./localLookBuilder";
 import { colorsOf, isColorCompatibleWithAll } from "./colorCompatibility";
 
 export interface LocalPackingPlan {
@@ -20,21 +20,55 @@ export interface LocalPackingPlan {
 
 export function buildLocalPackingPlan(
   items: ClosetItem[],
-  days: number
+  days: number,
+  tripName?: string
 ): LocalPackingPlan | null {
   const wearable = (items || []).filter(
     (i) => i?.laundryStatus === "clean" && i?.closetStatus !== "store"
   );
   const byCategory = (cat: string) => wearable.filter((i) => i?.category === cat);
 
-  const dresses = byCategory("dress");
-  const sets = byCategory("set");
-  const tops = byCategory("top");
-  const bottoms = byCategory("bottom");
+  // Season is set once for the whole trip, not re-randomized per day:
+  // a 5-day trip is presumably one destination with one climate, so
+  // "sunny beach day" shouldn't happen on day 2 and "bundle up" on day
+  // 4 with no reason. If the trip name doesn't name a season, a
+  // single random center still keeps every day internally consistent
+  // with the others, rather than each day picking its own.
+  const tripText = (tripName || "").toLowerCase();
+  const seasonTarget = /summer|beach|hot|vacation|tropical|cancun|hawaii/.test(tripText)
+    ? 1
+    : /winter|cold|ski|snow|holiday/.test(tripText)
+    ? 3
+    : null;
+  const seasonBand =
+    seasonTarget !== null
+      ? { min: Math.max(1, seasonTarget - 1), max: Math.min(3, seasonTarget + 1) }
+      : (() => {
+          const pool = wearable.length > 0 ? wearable : [];
+          if (pool.length === 0) return { min: 1, max: 3 };
+          const center = estimateSeasonWeight(pool[Math.floor(Math.random() * pool.length)]);
+          return { min: Math.max(1, center - 1), max: Math.min(3, center + 1) };
+        })();
+
+  const seasonFiltered = (pool: ClosetItem[]) => {
+    const filtered = pool.filter((i) => {
+      const s = estimateSeasonWeight(i);
+      return s >= seasonBand.min && s <= seasonBand.max;
+    });
+    return filtered.length > 0 ? filtered : pool;
+  };
+
+  const dresses = seasonFiltered(byCategory("dress"));
+  const sets = seasonFiltered(byCategory("set"));
+  const tops = seasonFiltered(byCategory("top"));
+  const bottoms = seasonFiltered(byCategory("bottom"));
   const shoes = byCategory("shoes");
   const outerwear = byCategory("outerwear");
   const accessories = byCategory("accessory");
-  const swimwear = byCategory("swimwear");
+  const swimwear = byCategory("swimwear").filter((i) => {
+    const s = estimateSeasonWeight(i);
+    return s >= seasonBand.min && s <= seasonBand.max;
+  });
 
   if (shoes.length === 0) return null;
   if (
@@ -105,7 +139,8 @@ export function buildLocalPackingPlan(
     const inBand = (pool: ClosetItem[]) => {
       const filtered = pool.filter((i) => {
         const f = estimateFormality(i);
-        return f >= band.min && f <= band.max;
+        const s = estimateSeasonWeight(i);
+        return f >= band.min && f <= band.max && s >= seasonBand.min && s <= seasonBand.max;
       });
       return filtered.length > 0 ? filtered : pool;
     };

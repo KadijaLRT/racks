@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
           "system",
           `You are a fashion cataloguing assistant looking at a single product photo (from a screenshot or shopping link). Return ONLY a JSON object: { "name": string (short natural descriptive name), "category": one of ${VALID_CATEGORIES.join(
             "/"
-          )}, "subcategory": string (one specific noun, e.g. "blouse", "sneakers"), "tags": { key/value attributes as strings } }. Base everything on exactly what's visible.`
+          )}, "subcategory": string (one specific noun, e.g. "blouse", "sneakers"), "tags": { key/value attributes as strings, include "brand" only if a logo/label is clearly visible or the product title names it, never guessed from style } }. Base everything on exactly what's visible.`
         ),
         buildImageMessage(
           "Identify this product and return the JSON object only.",

@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
     {
       "name": "short descriptive name, e.g. 'Black ribbed knit top'",
       "category": "one of: ${VALID_CATEGORIES.join("/")}",
-      "tags": ["attribute: value strings, e.g. 'color: black', 'material: ribbed knit'"],
+      "tags": ["attribute: value strings, e.g. 'color: black', 'material: ribbed knit', 'brand: Nike' only if a logo/label is clearly visible, never guessed"],
       "box": { "x": 0-1, "y": 0-1, "width": 0-1, "height": 0-1 }
     }
   ]

@@ -17,12 +17,25 @@ export interface LocalLookResult {
 
 // Uniform random pick, with a light preference for pinned favorites
 // (an explicit "I like this" signal from the person, not an
-// algorithmic assumption). Wear count plays no role here at all.
-export function weightedPick<T extends { pinned?: boolean }>(
-  candidates: T[]
+// algorithmic assumption), and an optional further boost for colors
+// that show up often in the person's own favorited looks (learned
+// preference, not a hard rule — it nudges the odds, it doesn't
+// exclude anything). Wear count plays no role here at all.
+export function weightedPick<T extends { pinned?: boolean; tags?: Record<string, string> }>(
+  candidates: T[],
+  preferredColors: string[] = []
 ): T | null {
   if (candidates.length === 0) return null;
-  const weights = candidates.map((c) => (c.pinned ? 2 : 1));
+  const weights = candidates.map((c) => {
+    let w = c.pinned ? 2 : 1;
+    if (preferredColors.length > 0) {
+      const itemColors = colorsOf(c.tags?.color);
+      if (itemColors.some((ic) => preferredColors.includes(ic.toLowerCase()))) {
+        w *= 1.6;
+      }
+    }
+    return w;
+  });
   const total = weights.reduce((sum, w) => sum + w, 0);
   let roll = Math.random() * total;
   for (let i = 0; i < candidates.length; i++) {
@@ -40,13 +53,14 @@ export function weightedPick<T extends { pinned?: boolean }>(
  */
 export function pickColorCompatible<T extends { pinned?: boolean; tags?: Record<string, string> }>(
   candidates: T[],
-  referenceColors: string[]
+  referenceColors: string[],
+  preferredColors: string[] = []
 ): T | null {
   if (candidates.length === 0) return null;
   const compatible = candidates.filter((c) =>
     isColorCompatibleWithAll(colorsOf(c.tags?.color), referenceColors)
   );
-  return weightedPick(compatible.length > 0 ? compatible : candidates);
+  return weightedPick(compatible.length > 0 ? compatible : candidates, preferredColors);
 }
 
 // --- Formality scoring ---------------------------------------------
@@ -114,6 +128,40 @@ export function estimateFormality(item: ClosetItem): number {
   // so a plain unlabeled dress doesn't default all the way down to 2.
   if (item?.category === "dress" && best === 2) best = 3;
   if (item?.category === "outerwear" && best === 2) best = 3;
+  return best;
+}
+
+// 1 = warm-weather/lightweight (linen, tank, shorts, sandals),
+// 2 = transitional (most everyday pieces, no strong seasonal signal),
+// 3 = cold-weather/heavy (wool, coats, boots). This exists because
+// color and formality compatibility alone don't stop a linen tank
+// from getting paired with a wool coat — they're a plausible color
+// match and similar formality, but seasonally nonsensical together.
+const SEASON_KEYWORDS: { weight: number; keywords: string[] }[] = [
+  {
+    weight: 1,
+    keywords: [
+      "linen", "tank", "shorts", "sandal", "flip flop", "slide",
+      "sundress", "swim", "bikini", "tube top", "camisole", "romper",
+      "espadrille", "seersucker", "eyelet",
+    ],
+  },
+  {
+    weight: 3,
+    keywords: [
+      "wool", "cashmere", "fleece", "coat", "puffer", "boot", "sweater",
+      "turtleneck", "flannel", "corduroy", "thermal", "parka", "shearling",
+      "heavy", "cable knit", "sweatsuit", "tracksuit",
+    ],
+  },
+];
+
+export function estimateSeasonWeight(item: ClosetItem): number {
+  const text = textOf(item);
+  let best = 2;
+  for (const { weight, keywords } of SEASON_KEYWORDS) {
+    if (keywords.some((k) => text.includes(k))) best = weight;
+  }
   return best;
 }
 
@@ -189,11 +237,27 @@ function metalToneOf(item: ClosetItem): "gold" | "silver" | null {
 
 // --- Main builder -----------------------------------------------------
 
+export interface LearnedPreferences {
+  // Colors that show up often in the person's own favorited/saved
+  // looks, lowercased. Used as a soft weighting boost during
+  // selection, never a hard filter — someone's favorites skewing
+  // toward jewel tones shouldn't make every other color impossible to
+  // get picked, just less likely relative to the ones they keep going
+  // back to.
+  colors: string[];
+  // Average formality level across favorited looks' items, used to
+  // bias the random band-center when no occasion is specified (rather
+  // than a fully uncorrelated random pick every time "surprise me" is
+  // used with no other input).
+  formalityCenter: number | null;
+}
+
 export function buildLocalLook(
   items: ClosetItem[],
   occasion?: string,
   context?: string[],
-  energy?: string
+  energy?: string,
+  preferences?: LearnedPreferences
 ): LocalLookResult | null {
   let wearable = (items || []).filter(
     (i) => i?.laundryStatus === "clean" && i?.category !== "makeup" && i?.closetStatus !== "store"
@@ -234,6 +298,15 @@ export function buildLocalLook(
   const band =
     targetBand ||
     (() => {
+      // With a learned formality preference and no explicit occasion,
+      // lean toward what the person actually favorites most often
+      // (70% of the time) rather than a fully random pick every time
+      // "surprise me" gets used with no other input, while still
+      // leaving room for variety the other 30%.
+      if (preferences?.formalityCenter != null && Math.random() < 0.7) {
+        const center = Math.round(preferences.formalityCenter);
+        return { min: Math.max(1, center - 1), max: Math.min(5, center + 1) };
+      }
       const center = estimateFormality(
         wearable[Math.floor(Math.random() * wearable.length)]
       );
@@ -248,9 +321,34 @@ export function buildLocalLook(
     band.max = Math.min(5, band.max + 1);
   }
 
+  // Season is a separate axis from formality entirely: color and
+  // formality compatibility alone don't stop a linen tank from being
+  // paired with a wool coat. If the occasion or weather context names
+  // a season, that sets a hard target; otherwise a random per-outfit
+  // center still keeps the outfit internally consistent (no mixing
+  // sandals with a puffer) even with nothing explicit stated.
+  const occasionAndContextText = `${occasion || ""} ${(context || []).join(" ")}`.toLowerCase();
+  const seasonTarget = /summer|beach|hot|vacation|tropical/.test(occasionAndContextText)
+    ? 1
+    : /winter|cold|holiday|snow/.test(occasionAndContextText)
+    ? 3
+    : forceOuterwear
+    ? 3
+    : null;
+  const seasonBand =
+    seasonTarget !== null
+      ? { min: Math.max(1, seasonTarget - 1), max: Math.min(3, seasonTarget + 1) }
+      : (() => {
+          const center = estimateSeasonWeight(
+            wearable[Math.floor(Math.random() * wearable.length)]
+          );
+          return { min: Math.max(1, center - 1), max: Math.min(3, center + 1) };
+        })();
+
   const inBand = (item: ClosetItem) => {
     const f = estimateFormality(item);
-    return f >= band.min && f <= band.max;
+    const s = estimateSeasonWeight(item);
+    return f >= band.min && f <= band.max && s >= seasonBand.min && s <= seasonBand.max;
   };
 
   // Falls back to the closest-formality items outside the band rather
@@ -324,17 +422,19 @@ export function buildLocalLook(
     establishedColors = [...establishedColors, ...colorsOf(item.tags?.color)];
   }
 
+  const preferredColors = preferences?.colors || [];
+
   if (chosenBase === "dress") {
-    addPick(weightedPick(dresses));
+    addPick(weightedPick(dresses, preferredColors));
   } else if (chosenBase === "set") {
-    addPick(weightedPick(sets));
+    addPick(weightedPick(sets, preferredColors));
   } else {
     // Bottom picked first (usually the more color-neutral piece in
     // practice, e.g. denim/black trousers), then the top picked to be
     // color-compatible with it, rather than picking both blind.
-    const bottom = weightedPick(bottoms);
+    const bottom = weightedPick(bottoms, preferredColors);
     addPick(bottom);
-    const top = pickColorCompatible(tops, establishedColors);
+    const top = pickColorCompatible(tops, establishedColors, preferredColors);
     addPick(top);
   }
 
@@ -357,14 +457,14 @@ export function buildLocalLook(
     });
     if (comfortable.length > 0) shoeCandidates = comfortable;
   }
-  addPick(pickColorCompatible(shoeCandidates.length > 0 ? shoeCandidates : shoes, establishedColors));
+  addPick(pickColorCompatible(shoeCandidates.length > 0 ? shoeCandidates : shoes, establishedColors, preferredColors));
 
   // Outerwear: skip entirely for the most casual band (level 1) unless
   // weather calls for it, a blazer over a sweatsuit is its own kind of
   // mismatch, but a coat over a sweatsuit for a chilly/rainy day isn't.
   const outerwearChance = forceOuterwear ? 0.9 : 0.35;
   if ((band.max > 1 || forceOuterwear) && outerwear.length > 0 && Math.random() < outerwearChance) {
-    addPick(pickColorCompatible(outerwear, establishedColors));
+    addPick(pickColorCompatible(outerwear, establishedColors, preferredColors));
   }
 
   // Accessories: coordinate both metal tone (gold shoe hardware, e.g.)
@@ -391,7 +491,7 @@ export function buildLocalLook(
       ? 1
       : 2;
     for (let i = 0; i < accessoryCount && pool.length > 0; i++) {
-      const chosen = pickColorCompatible(pool, establishedColors);
+      const chosen = pickColorCompatible(pool, establishedColors, preferredColors);
       if (!chosen) break;
       addPick(chosen);
       pool = pool.filter((p) => p.id !== chosen.id);

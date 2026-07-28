@@ -39,7 +39,7 @@ export default function PackPage() {
       return;
     }
     setError("");
-    const plan = buildLocalPackingPlan(closetItems, days);
+    const plan = buildLocalPackingPlan(closetItems, days, description.trim());
     if (!plan) {
       setError(
         "Your closet doesn't have enough marked-clean items yet (need a dress, a set, or a top and a bottom, plus shoes)."

@@ -22,8 +22,8 @@ import {
   lookStore,
   incrementTimesWorn,
 } from "@/lib/storage";
-import type { ClosetItem, WigItem, HairProfile, ColorProfile, GeneratedLook, UserMeasurements } from "@/lib/types";
-import { buildLocalLook } from "@/lib/localLookBuilder";
+import type { ClosetItem, WigItem, HairProfile, ColorProfile, GeneratedLook, UserMeasurements, ItemCategory } from "@/lib/types";
+import { buildLocalLook, estimateFormality } from "@/lib/localLookBuilder";
 import { colorsOf, isColorCompatibleWithAll } from "@/lib/colorCompatibility";
 import { stripImagesForPrompt } from "@/lib/stripImagesForPrompt";
 
@@ -90,6 +90,13 @@ export default function LooksPage() {
   const [context, setContext] = useState<string[]>([]);
   const [energy, setEnergy] = useState("");
   const [swappingItem, setSwappingItem] = useState<ClosetItem | null>(null);
+  const [manualBuildOpen, setManualBuildOpen] = useState(false);
+  const [manualPicks, setManualPicks] = useState<Record<string, ClosetItem | null>>({});
+  const [manualPickerSlot, setManualPickerSlot] = useState<{
+    key: string;
+    label: string;
+    category: ItemCategory;
+  } | null>(null);
   const [stepByStep, setStepByStep] = useState(false);
   const [shakeEnabled, setShakeEnabled] = useState(false);
   const [shakeSupported, setShakeSupported] = useState(false);
@@ -218,7 +225,39 @@ export default function LooksPage() {
   function buildWithoutAI() {
     setError("");
     setSavedMessage("");
-    const local = buildLocalLook(closetItems, prompt.trim(), context, energy);
+
+    // Learn from what the person has actually favorited (not every
+    // saved look, and not "worn" markers, since those track different
+    // things): which colors keep showing up, and roughly how formal
+    // their taste tends to run, used as a soft nudge rather than a
+    // rule, so future "surprise me" picks skew toward what they
+    // actually keep coming back to.
+    const favorites = savedLooks.filter((l) => l.favorite);
+    const favoriteItems = favorites.flatMap((look) =>
+      look.itemIds
+        .map((id) => closetItems.find((c) => c.id === id))
+        .filter(Boolean) as ClosetItem[]
+    );
+    const colorCounts = new Map<string, number>();
+    for (const item of favoriteItems) {
+      for (const c of colorsOf(item.tags?.color)) {
+        const key = c.toLowerCase();
+        colorCounts.set(key, (colorCounts.get(key) || 0) + 1);
+      }
+    }
+    const preferredColors = [...colorCounts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6)
+      .map(([c]) => c);
+    const formalityCenter =
+      favoriteItems.length >= 3
+        ? favoriteItems.reduce((sum, i) => sum + estimateFormality(i), 0) / favoriteItems.length
+        : null;
+
+    const local = buildLocalLook(closetItems, prompt.trim(), context, energy, {
+      colors: preferredColors,
+      formalityCenter,
+    });
     if (!local) {
       setError(
         "Your closet doesn't have enough marked-clean items yet to build a full look (need a dress, a set, or a top and bottom, plus shoes)."
@@ -247,6 +286,52 @@ export default function LooksPage() {
     setRefinement("");
     setWhyNotOpen(false);
     setWhyNotAnswers({});
+  }
+
+  // Not every request should go through an algorithm at all: someone
+  // who already knows exactly what they want to wear should be able
+  // to just say so and log it, not have something choose for them.
+  // Zero AI, zero local scoring, purely whatever they pick.
+  const MANUAL_SLOTS: { key: string; label: string; category: ItemCategory }[] = [
+    { key: "top", label: "Top", category: "top" },
+    { key: "bottom", label: "Bottom", category: "bottom" },
+    { key: "dress", label: "Dress", category: "dress" },
+    { key: "set", label: "Set", category: "set" },
+    { key: "swimwear", label: "Swimwear", category: "swimwear" },
+    { key: "outerwear", label: "Outerwear", category: "outerwear" },
+    { key: "shoes", label: "Shoes", category: "shoes" },
+    { key: "accessory1", label: "Accessory", category: "accessory" },
+    { key: "accessory2", label: "Accessory", category: "accessory" },
+  ];
+
+  function openManualBuild() {
+    setManualPicks({});
+    setManualBuildOpen(true);
+  }
+
+  function finalizeManualLook() {
+    const itemIds = Object.values(manualPicks)
+      .filter(Boolean)
+      .map((i) => (i as ClosetItem).id);
+    if (itemIds.length === 0) return;
+    setResult({
+      itemIds,
+      hairstyle: "",
+      makeup: "",
+      reasoning: "Built by hand, exactly the way you wanted it.",
+      scores: {},
+      overallLabel: "Your pick",
+      overallStars: 0,
+      strengths: [],
+      weaknesses: [],
+    });
+    setRevealedPhaseCount(null);
+    setError("");
+    setSavedMessage("");
+    setRefinement("");
+    setWhyNotOpen(false);
+    setWhyNotAnswers({});
+    setManualBuildOpen(false);
   }
 
   // Shake-to-shuffle: an opt-in physical-feeling way to trigger the
@@ -518,6 +603,13 @@ export default function LooksPage() {
             className="w-full rounded-xl border border-clay-200 text-stone-600 py-2.5 text-xs font-medium disabled:opacity-60"
           >
             Build without AI
+          </button>
+
+          <button
+            onClick={openManualBuild}
+            className="w-full rounded-xl border border-clay-200 text-stone-600 py-2.5 text-xs font-medium"
+          >
+            Build it myself
           </button>
 
           <label className="flex items-center gap-2 text-xs text-stone-500 px-1">
@@ -877,6 +969,123 @@ export default function LooksPage() {
           ) : null}
         </div>
       </div>
+
+      {manualBuildOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex flex-col md:items-center md:justify-center bg-black/40"
+          onClick={() => setManualBuildOpen(false)}
+        >
+          <div
+            className="mt-auto md:mt-0 md:max-w-sm md:w-full bg-cream rounded-t-3xl md:rounded-3xl max-h-[85vh] flex flex-col pb-safe"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-clay-100">
+              <div>
+                <h2 className="text-base font-medium text-stone-800">Build it yourself</h2>
+                <p className="text-xs text-stone-400">Pick whatever pieces you want, skip the rest</p>
+              </div>
+              <button onClick={() => setManualBuildOpen(false)} aria-label="Close">
+                <X size={18} className="text-stone-500" />
+              </button>
+            </div>
+            <div className="overflow-y-auto px-5 py-4 space-y-2.5">
+              {MANUAL_SLOTS.map((slot) => {
+                const picked = manualPicks[slot.key];
+                return (
+                  <button
+                    key={slot.key}
+                    onClick={() => setManualPickerSlot({ key: slot.key, label: slot.label, category: slot.category })}
+                    className="w-full flex items-center gap-3 rounded-xl border border-clay-100 p-2 text-left"
+                  >
+                    <div className="w-12 h-12 rounded-lg overflow-hidden bg-cream-100 shrink-0">
+                      {picked?.image ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={picked.image} alt={picked.name} className="w-full h-full object-cover" />
+                      ) : null}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs text-stone-400">{slot.label}</p>
+                      <p className="text-sm text-stone-700 truncate">
+                        {picked ? picked.name : "Tap to choose"}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="px-5 py-4 border-t border-clay-100">
+              <button
+                onClick={finalizeManualLook}
+                disabled={Object.values(manualPicks).filter(Boolean).length === 0}
+                className="w-full rounded-xl bg-emerald-600 text-cream py-3 text-sm font-medium disabled:opacity-40"
+              >
+                Use this look
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {manualPickerSlot ? (
+        <div
+          className="fixed inset-0 z-50 flex flex-col md:items-center md:justify-center bg-black/40"
+          onClick={() => setManualPickerSlot(null)}
+        >
+          <div
+            className="mt-auto md:mt-0 md:max-w-sm md:w-full bg-cream rounded-t-3xl md:rounded-3xl max-h-[75vh] flex flex-col pb-safe"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-clay-100">
+              <h2 className="text-base font-medium text-stone-800">Choose {manualPickerSlot.label}</h2>
+              <button onClick={() => setManualPickerSlot(null)} aria-label="Close">
+                <X size={18} className="text-stone-500" />
+              </button>
+            </div>
+            <div className="overflow-y-auto px-5 py-4">
+              {(() => {
+                const options = closetItems.filter(
+                  (i) =>
+                    i.category === manualPickerSlot.category &&
+                    i.laundryStatus === "clean" &&
+                    i.closetStatus !== "store"
+                );
+                if (options.length === 0) {
+                  return (
+                    <p className="text-sm text-stone-500 text-center py-8">
+                      No clean {manualPickerSlot.label.toLowerCase()} items available.
+                    </p>
+                  );
+                }
+                return (
+                  <div className="grid grid-cols-3 gap-3">
+                    {options.map((item) => (
+                      <button
+                        key={item.id}
+                        onClick={() => {
+                          setManualPicks((prev) => ({
+                            ...prev,
+                            [manualPickerSlot.key]: item,
+                          }));
+                          setManualPickerSlot(null);
+                        }}
+                        className="text-left"
+                      >
+                        <div className="aspect-[3/4] rounded-xl overflow-hidden bg-cream-100">
+                          {item.image ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
+                          ) : null}
+                        </div>
+                        <p className="text-[11px] text-stone-600 mt-1 truncate">{item.name}</p>
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {swappingItem ? (
         <div

@@ -32,8 +32,10 @@ export const SUBCATEGORY_SUGGESTIONS: Record<ItemCategory, string[]> = {
   outerwear: ["jacket", "coat", "blazer", "cardigan", "vest"],
   shoes: ["sneakers", "heels", "boots", "flats", "sandals", "flip flops", "slides"],
   accessory: [
-    "bag", "jewelry", "jewelry set", "belt", "hat", "sunglasses", "scarf",
-    "socks", "tights", "stockings",
+    "bag", "earrings", "necklace", "bracelet", "ring", "anklet",
+    "choker", "bangle", "brooch", "body chain", "pants chain",
+    "nose ring", "hair jewelry", "jewelry set", "belt", "hat",
+    "sunglasses", "scarf", "socks", "tights", "stockings",
   ],
   swimwear: ["bikini", "monokini", "one-piece", "tankini", "cover-up", "rash guard"],
   makeup: ["face", "eyes", "lips", "cheeks"],
@@ -55,7 +57,11 @@ export const SUBCATEGORY_GROUPS: Partial<Record<ItemCategory, Record<string, str
     Other: ["tunic"],
   },
   accessory: {
-    Jewelry: ["jewelry", "jewelry set"],
+    Jewelry: [
+      "earrings", "necklace", "bracelet", "ring", "anklet", "choker",
+      "bangle", "brooch", "body chain", "pants chain", "nose ring",
+      "hair jewelry", "jewelry set",
+    ],
     "Bags & Belts": ["bag", "belt"],
     Weather: ["hat", "sunglasses", "scarf"],
     Basics: ["socks", "tights", "stockings"],
@@ -405,10 +411,15 @@ export const ACCESSORY_MATERIAL_OPTIONS = [
 // subcategory is set yet, rather than hiding the row.
 export function accessoryMaterialOptionsForSubcategory(subcategory: string): string[] {
   const normalized = subcategory.toLowerCase();
+  const JEWELRY_SUBCATEGORIES = [
+    "earrings", "necklace", "bracelet", "ring", "anklet", "choker",
+    "bangle", "brooch", "body chain", "pants chain", "nose ring",
+    "hair jewelry", "jewelry set",
+  ];
   if (normalized.includes("bag")) {
     return ["Leather", "Faux Leather", "Canvas", "Suede", "Fabric", "Straw", "Wood", "Metal"];
   }
-  if (normalized.includes("jewelry")) {
+  if (JEWELRY_SUBCATEGORIES.includes(normalized)) {
     return ["Metal", "Gold-Tone", "Silver-Tone", "Beaded", "Pearl", "Wood"];
   }
   if (normalized.includes("belt")) {
@@ -836,18 +847,18 @@ export interface AppSettings {
   // limit just from the act of adding them. Defaults to true (existing
   // behavior) so nothing changes unless someone turns it off.
   autoTagOnUpload?: boolean;
-}
-
-// Caches the home screen's "Today's Look" so it stays stable across
-// visits within the same day (an editorial hero card that changes on
-// every app open would feel random, not curated) rather than
-// regenerating from scratch each time. Built entirely locally, zero AI.
-export interface DailyLook {
-  date: string; // YYYY-MM-DD, local date the look was generated for
-  itemIds: string[];
-  reasoning: string;
-  vibeLabel: string;
-  updatedAt: number;
+  // Applied automatically to every new item at the moment it's added,
+  // entirely locally, no AI involved: e.g. tagging a whole batch of
+  // summer purchases as Collections: ["Summer"], Fabric: "Cotton" in
+  // one setup instead of applying it after the fact to each item.
+  // Merged in underneath whatever local detection (dominant color)
+  // already fills in, never overriding it.
+  defaultUploadTags?: {
+    collections?: string[];
+    color?: string;
+    pattern?: string;
+    fabric?: string;
+  };
 }
 
 export interface UpcomingPlan {

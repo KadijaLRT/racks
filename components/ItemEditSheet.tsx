@@ -7,6 +7,8 @@ import { buildLocalItemName } from "@/lib/localNaming";
 import { JEAN_CUT_OPTIONS, RISE_HEIGHT_OPTIONS, SKIRT_LENGTH_OPTIONS, SHORTS_LENGTH_OPTIONS, NECKLINE_OPTIONS, TOP_SILHOUETTE_OPTIONS, DRESS_SILHOUETTE_OPTIONS, SLEEVE_LENGTH_OPTIONS, SLEEVE_OPTIONS, BACK_STYLE_OPTIONS, SUBCATEGORY_SUGGESTIONS, SUBCATEGORY_GROUPS, COLLECTION_OPTIONS, COLOR_OPTIONS, PATTERN_OPTIONS, FABRIC_OPTIONS, WASH_OPTIONS, OUTERWEAR_CLOSURE_OPTIONS, OUTERWEAR_LENGTH_OPTIONS, SHOE_HEEL_OPTIONS, SHOE_TOE_OPTIONS, SHOE_MATERIAL_OPTIONS, accessoryMaterialOptionsForSubcategory, JEWELRY_TYPE_OPTIONS, EARRING_TYPE_OPTIONS, BAG_SIZE_OPTIONS, HAT_TYPE_OPTIONS, MAKEUP_FINISH_OPTIONS, makeupTypeOptionsForSubcategory, makeupShadeOptionsForType, makeupFinishAppliesToTypes, KNIT_TYPE_OPTIONS, HOOD_STYLE_OPTIONS, HOOD_POCKET_OPTIONS, GARMENT_FIT_OPTIONS, SWIMSUIT_TYPE_OPTIONS, SWIMSUIT_TOP_STYLE_OPTIONS, SWIMSUIT_BOTTOM_STYLE_OPTIONS } from "@/lib/types";
 import { CATEGORIES, categoryLabel } from "@/lib/categories";
 import { fileToResizedDataUrl, resizeDataUrlForAI } from "@/lib/image";
+import { extractDominantColorTag } from "@/lib/dominantColor";
+import { computeHistoryTagSuggestions } from "@/lib/localTagHistory";
 import StylingTipList from "@/components/StylingTipList";
 import {
   braRecommendation,
@@ -132,6 +134,8 @@ export default function ItemEditSheet({
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [subcategorySearch, setSubcategorySearch] = useState("");
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
+  const [expandedAttrs, setExpandedAttrs] = useState<Set<string>>(new Set());
+  const [attrSearch, setAttrSearch] = useState<Record<string, string>>({});
   const [historySuggestionDismissed, setHistorySuggestionDismissed] = useState(false);
   const [backImage, setBackImage] = useState<string | undefined>(item?.backImage);
   const [analyzingBack, setAnalyzingBack] = useState(false);
@@ -231,6 +235,30 @@ export default function ItemEditSheet({
       setRetagItemError("Couldn't reach the tagging service.");
     } finally {
       setRetaggingItem(false);
+    }
+  }
+
+  // Entirely local, zero AI, zero network call: re-samples the
+  // photo's actual pixels for color (same extractor used at upload
+  // time, in case the item was added before that existed, or the
+  // color was never set), and applies your own tagging history for
+  // this subcategory if a real majority pattern exists. Can't guess a
+  // subcategory or name out of thin air the way AI can, so those are
+  // left for you to fill in via the Anatomy Lens picker above, but it
+  // fills in everything it honestly can without a Groq call.
+  async function handleRetagWithoutAI() {
+    if (!image) return;
+    const detected = await extractDominantColorTag(image);
+    setTags((prev) => {
+      const next = { ...(prev || {}) };
+      if (detected && !next.color) next.color = detected;
+      return next;
+    });
+    if (subcategory.trim() && allItems) {
+      const suggestions = computeHistorySuggestions();
+      if (Object.keys(suggestions).length > 0) {
+        setTags((prev) => ({ ...(prev || {}), ...suggestions }));
+      }
     }
   }
 
@@ -436,11 +464,44 @@ export default function ItemEditSheet({
   // appear a dozen times over on a single item.
   function renderAttributeRow(label: string, tagKey: string, options: string[]) {
     const selectedValues = parseAttributeValues(tags?.[tagKey]);
+    const needsProgressive = options.length > 8;
+    const search = (attrSearch[tagKey] || "").trim().toLowerCase();
+    const expanded = expandedAttrs.has(tagKey) || Boolean(search);
+
+    const visibleOptions = (() => {
+      if (!needsProgressive) return options;
+      if (search) return options.filter((o) => o.toLowerCase().includes(search));
+      if (expanded) return options;
+      // Collapsed view: always keep whatever's already selected visible
+      // (a picked value should never seem to vanish), filled out to 8
+      // total from the front of the list, which is already ordered
+      // with the most common entries first (Solid before Argyle,
+      // neutrals before jewel tones, etc.).
+      const rest = options.filter((o) => !selectedValues.includes(o));
+      return [...selectedValues.filter((v) => options.includes(v)), ...rest].slice(
+        0,
+        Math.max(8, selectedValues.length)
+      );
+    })();
+
     return (
       <div>
         <p className="text-[11px] text-stone-400 mb-1.5">{label}</p>
+        {needsProgressive ? (
+          <div className="relative mb-1.5">
+            <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-300" />
+            <input
+              value={attrSearch[tagKey] || ""}
+              onChange={(e) =>
+                setAttrSearch((prev) => ({ ...prev, [tagKey]: e.target.value }))
+              }
+              placeholder={`Search ${label.toLowerCase()}...`}
+              className="w-full rounded-xl border border-clay-100 pl-7 pr-3 py-1 text-xs bg-white"
+            />
+          </div>
+        ) : null}
         <div className="flex flex-wrap gap-1.5">
-          {options.map((opt) => {
+          {visibleOptions.map((opt) => {
             const active = selectedValues.includes(opt);
             return (
               <button
@@ -458,6 +519,22 @@ export default function ItemEditSheet({
             );
           })}
         </div>
+        {needsProgressive && !search ? (
+          <button
+            type="button"
+            onClick={() =>
+              setExpandedAttrs((prev) => {
+                const next = new Set(prev);
+                if (next.has(tagKey)) next.delete(tagKey);
+                else next.add(tagKey);
+                return next;
+              })
+            }
+            className="text-[11px] text-emerald-700 mt-1"
+          >
+            {expanded ? "Show fewer" : `Show all ${options.length}`}
+          </button>
+        ) : null}
       </div>
     );
   }
@@ -597,40 +674,8 @@ export default function ItemEditSheet({
   // silent auto-fill would be indistinguishable from a bug if it ever
   // suggested wrong.
   function computeHistorySuggestions(): Record<string, string> {
-    if (!allItems || !subcategory.trim()) return {};
-    const matches = allItems.filter(
-      (i) =>
-        i.id !== item.id &&
-        i.category === category &&
-        (i.subcategory || "").trim().toLowerCase() === subcategory.trim().toLowerCase()
-    );
-    if (matches.length < 2) return {};
-
-    const valueCounts = new Map<string, Map<string, number>>();
-    for (const match of matches) {
-      for (const [key, rawValue] of Object.entries(match.tags || {})) {
-        // Only consider the first value of a multi-select tag, same
-        // simplification used elsewhere (grouping, naming), so one
-        // unusual combo doesn't fragment the count.
-        const value = rawValue.split(",")[0]?.trim();
-        if (!value) continue;
-        if (!valueCounts.has(key)) valueCounts.set(key, new Map());
-        const counts = valueCounts.get(key)!;
-        counts.set(value, (counts.get(value) || 0) + 1);
-      }
-    }
-
-    const suggestions: Record<string, string> = {};
-    for (const [key, counts] of valueCounts.entries()) {
-      if (tags?.[key]) continue; // never override something already set
-      const [topValue, topCount] = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
-      // Require a real majority (>50% of matching items agree), not
-      // just the most common of several scattered one-off values.
-      if (topCount / matches.length > 0.5) {
-        suggestions[key] = topValue;
-      }
-    }
-    return suggestions;
+    if (!allItems) return {};
+    return computeHistoryTagSuggestions({ id: item.id, category, subcategory, tags }, allItems);
   }
 
   function renderHistorySuggestionBanner() {
@@ -810,6 +855,14 @@ export default function ItemEditSheet({
                   )}
                   {retaggingItem ? "Retagging..." : "Retag with AI"}
                 </button>
+                <button
+                  type="button"
+                  onClick={handleRetagWithoutAI}
+                  disabled={!image}
+                  className="mt-1 text-[11px] text-stone-500 disabled:opacity-60"
+                >
+                  Retag without AI
+                </button>
                 {retagItemError ? (
                   <p className="mt-1 text-[11px] text-clay-700">{retagItemError}</p>
                 ) : null}
@@ -958,7 +1011,7 @@ export default function ItemEditSheet({
 
                   {category === "accessory" ? (
                     <>
-                      {subcategory.toLowerCase().includes("jewelry")
+                      {subcategory.toLowerCase() === "jewelry set"
                         ? renderAttributeRow("Jewelry Type", "jewelryType", JEWELRY_TYPE_OPTIONS)
                         : null}
                       {subcategory.toLowerCase().includes("hat")
@@ -1084,7 +1137,8 @@ export default function ItemEditSheet({
                     <>
                       <div className="border-t border-clay-50 -mx-3" />
                       {renderAttributeRow("Color", "color", COLOR_OPTIONS)}
-                      {parseAttributeValues(tags?.jewelryType).includes("Earrings")
+                      {subcategory.toLowerCase() === "earrings" ||
+                      parseAttributeValues(tags?.jewelryType).includes("Earrings")
                         ? renderAttributeRow("Earring Type", "earringType", EARRING_TYPE_OPTIONS)
                         : renderAttributeRow("Pattern", "pattern", PATTERN_OPTIONS)}
                       {category !== "shoes" && category !== "accessory"

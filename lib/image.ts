@@ -106,3 +106,62 @@ export function fileToResizedDataUrl(
     reader.readAsDataURL(file);
   });
 }
+
+/**
+ * Shrinks an already-stored data URL further, specifically for sending
+ * to Groq's vision model, without touching the original (the stored/
+ * displayed image stays at its usual 900px/0.82 quality). A tagging
+ * task (color, pattern, subcategory, neckline, etc.) doesn't need
+ * anywhere near that resolution to answer correctly, and vision model
+ * token cost scales with image size, so this cuts real per-call token
+ * spend on every single tagging request with negligible accuracy loss.
+ * Falls back to the original data URL if resizing fails for any
+ * reason, since a slightly-too-large image is far better than a
+ * failed tagging call.
+ */
+export function resizeDataUrlForAI(
+  dataUrl: string,
+  maxDim = 512,
+  quality = 0.65
+): Promise<string> {
+  return new Promise((resolve) => {
+    try {
+      const img = new Image();
+      img.onerror = () => resolve(dataUrl);
+      img.onload = () => {
+        try {
+          let { width, height } = img;
+          if (width <= maxDim && height <= maxDim) {
+            // Already small enough, no need to re-encode and risk
+            // making it larger (a bigger JPEG at lower quality can
+            // sometimes outweigh a smaller PNG source).
+            resolve(dataUrl);
+            return;
+          }
+          if (width > height && width > maxDim) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else if (height >= width && height > maxDim) {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) {
+            resolve(dataUrl);
+            return;
+          }
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL("image/jpeg", quality));
+        } catch {
+          resolve(dataUrl);
+        }
+      };
+      img.src = dataUrl;
+    } catch {
+      resolve(dataUrl);
+    }
+  });
+}

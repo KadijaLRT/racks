@@ -7,15 +7,19 @@ import ItemCard from "@/components/ItemCard";
 import ItemEditSheet from "@/components/ItemEditSheet";
 import RemixSheet from "@/components/RemixSheet";
 import BulkImportSheet from "@/components/BulkImportSheet";
-import { fileToResizedDataUrl } from "@/lib/image";
+import { fileToResizedDataUrl, resizeDataUrlForAI } from "@/lib/image";
+import { extractDominantColorTag } from "@/lib/dominantColor";
 import { closetStore } from "@/lib/storage";
 import type { ClosetItem, ItemCategory } from "@/lib/types";
+import { COLLECTION_OPTIONS, SMART_COLLECTIONS, COLOR_OPTIONS, PATTERN_OPTIONS, FABRIC_OPTIONS } from "@/lib/types";
 import { CATEGORIES } from "@/lib/categories";
 
 export default function ClosetPage() {
   const [items, setItems] = useState<ClosetItem[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [filter, setFilter] = useState<ItemCategory | "all">("all");
+  const [browseMode, setBrowseMode] = useState<"category" | "collection">("category");
+  const [collectionFilter, setCollectionFilter] = useState<string>("all");
   const [groupBy, setGroupBy] = useState("subcategory");
   const [search, setSearch] = useState("");
   const [pendingCategory, setPendingCategory] = useState<ItemCategory>("top");
@@ -39,6 +43,14 @@ export default function ClosetPage() {
     stoppedEarly: boolean;
     reason?: string;
   } | null>(null);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [batchSheetOpen, setBatchSheetOpen] = useState(false);
+  const [batchApplying, setBatchApplying] = useState(false);
+  const [batchCollections, setBatchCollections] = useState<string[]>([]);
+  const [batchColor, setBatchColor] = useState("");
+  const [batchPattern, setBatchPattern] = useState("");
+  const [batchFabric, setBatchFabric] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const bulkFileRef = useRef<HTMLInputElement>(null);
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -133,8 +145,29 @@ export default function ClosetPage() {
 
   const filteredItems = useMemo(() => {
     const query = search.trim().toLowerCase();
+    // Most Worn is computed live (top third by wear count, min 1 wear)
+    // rather than a fixed threshold, so it scales sensibly whether
+    // someone owns 20 items or 200.
+    const mostWornIds = (() => {
+      if (browseMode !== "collection" || collectionFilter !== "Most Worn") return null;
+      const worn = (items || []).filter((i) => (i.timesWorn || 0) > 0);
+      const sorted = [...worn].sort((a, b) => (b.timesWorn || 0) - (a.timesWorn || 0));
+      const cutoff = Math.max(1, Math.ceil(sorted.length / 3));
+      return new Set(sorted.slice(0, cutoff).map((i) => i.id));
+    })();
+
     return (items || []).filter((item) => {
-      if (filter !== "all" && item?.category !== filter) return false;
+      if (browseMode === "category") {
+        if (filter !== "all" && item?.category !== filter) return false;
+      } else if (collectionFilter !== "all") {
+        if (collectionFilter === "Most Worn") {
+          if (!mostWornIds?.has(item.id)) return false;
+        } else if (collectionFilter === "Favorites") {
+          if (!item.pinned) return false;
+        } else if (!(item.collections || []).includes(collectionFilter)) {
+          return false;
+        }
+      }
       if (!query) return true;
       const haystack = [
         item?.name || "",
@@ -145,7 +178,7 @@ export default function ClosetPage() {
         .toLowerCase();
       return haystack.includes(query);
     });
-  }, [items, filter, search]);
+  }, [items, filter, browseMode, collectionFilter, search]);
 
   // Once a specific category is selected (not "All"), group the grid
   // into labeled sections by whichever dimension is currently chosen
@@ -156,7 +189,7 @@ export default function ClosetPage() {
   // subcategory vocabularies across categories (a bag next to a
   // sweater) wouldn't read as a coherent grouping.
   const groupedSections = useMemo(() => {
-    if (filter === "all") return null;
+    if (browseMode !== "category" || filter === "all") return null;
     const groups = new Map<string, ClosetItem[]>();
     for (const item of filteredItems) {
       const raw =
@@ -181,7 +214,7 @@ export default function ClosetPage() {
         label: key === "other" ? "Other" : key.replace(/\b\w/g, (c) => c.toUpperCase()),
         items: groupItems,
       }));
-  }, [filteredItems, filter, groupBy]);
+  }, [filteredItems, filter, groupBy, browseMode]);
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -197,17 +230,21 @@ export default function ClosetPage() {
 
       // Auto-tagging on upload was removed: every item now saves
       // instantly with zero Groq calls, cutting AI usage at the single
-      // highest-volume point in the app (every photo added). Tagging
-      // happens only when explicitly requested afterward, either the
-      // "Retag with AI" button on an individual item, or manually via
-      // the quick-pick chips (which auto-suggest a name locally as soon
-      // as a subcategory/color is picked, no AI needed for that either).
+      // highest-volume point in the app (every photo added). What can
+      // be determined without AI still gets filled in automatically:
+      // Color is extracted directly from the photo's actual pixels
+      // (dominant sampled color, mapped to the nearest known color
+      // name), no vision model needed for something this mechanical.
+      // Falls back to no color tag at all if extraction fails, rather
+      // than guessing.
+      const detectedColor = await extractDominantColorTag(dataUrl);
+
       const saved = await closetStore.create({
         category: pendingCategory,
         subcategory: undefined,
         image: dataUrl,
         name: "Untitled item",
-        tags: {},
+        tags: detectedColor ? { color: detectedColor } : {},
         laundryStatus: "clean",
         timesWorn: 0,
       });
@@ -236,6 +273,63 @@ export default function ClosetPage() {
     setSelected(null);
   }
 
+  function toggleSelectItem(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function exitSelectMode() {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  }
+
+  // Quick-Tap Preset Inheritance: apply a batch of tags/collections to
+  // every selected item in one action, entirely local, zero AI. Only
+  // the fields actually filled in the batch sheet get applied; a color
+  // pick doesn't wipe out each item's existing pattern tag, etc.
+  async function applyBatchTags(patch: {
+    collections?: string[];
+    color?: string;
+    pattern?: string;
+    fabric?: string;
+    laundryStatus?: ClosetItem["laundryStatus"];
+  }) {
+    setBatchApplying(true);
+    try {
+      const targets = items.filter((i) => selectedIds.has(i.id));
+      const updated = await Promise.all(
+        targets.map(async (item) => {
+          const next: ClosetItem = {
+            ...item,
+            tags: { ...(item.tags || {}) },
+          };
+          if (patch.color) next.tags.color = patch.color;
+          if (patch.pattern) next.tags.pattern = patch.pattern;
+          if (patch.fabric) next.tags.fabric = patch.fabric;
+          if (patch.laundryStatus) next.laundryStatus = patch.laundryStatus;
+          if (patch.collections && patch.collections.length > 0) {
+            const existing = new Set(next.collections || []);
+            for (const c of patch.collections) existing.add(c);
+            next.collections = [...existing];
+          }
+          await closetStore.update(next);
+          return next;
+        })
+      );
+      const updatedById = new Map(updated.map((i) => [i.id, i]));
+      setItems((prev) => (prev || []).map((i) => updatedById.get(i.id) || i));
+      setBatchSheetOpen(false);
+      exitSelectMode();
+      showAddedToast(`Updated ${updated.length} item${updated.length === 1 ? "" : "s"}`);
+    } finally {
+      setBatchApplying(false);
+    }
+  }
+
   // Re-runs AI tagging for every item still named "Untitled item" (the
   // fallback used when tagging failed at add-time, most commonly from
   // hitting Groq's rate limit). Sequential with a short pause between
@@ -260,10 +354,11 @@ export default function ClosetPage() {
     for (let i = 0; i < targets.length; i++) {
       const target = targets[i];
       try {
+        const aiImage = await resizeDataUrlForAI(target.image);
         const res = await fetch("/api/tag-item", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ image: target.image, category: target.category }),
+          body: JSON.stringify({ image: aiImage, category: target.category }),
         });
         const tagged = await res.json().catch(() => ({}));
 
@@ -348,9 +443,17 @@ export default function ClosetPage() {
       <div className="max-w-md mx-auto px-4 pt-4">
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-xl font-semibold text-stone-800">Closet</h1>
-          <span className="text-xs text-stone-400">
-            {(items || []).length} {(items || []).length === 1 ? "item" : "items"}
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-stone-400">
+              {(items || []).length} {(items || []).length === 1 ? "item" : "items"}
+            </span>
+            <button
+              onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
+              className="text-xs text-emerald-700 font-medium"
+            >
+              {selectMode ? "Cancel" : "Select"}
+            </button>
+          </div>
         </div>
 
         <div className="relative mb-3">
@@ -366,33 +469,99 @@ export default function ClosetPage() {
           />
         </div>
 
-        <div className="flex gap-2 overflow-x-auto pb-1 mb-2 -mx-4 px-4">
+        <div className="flex gap-1 mb-2 -mx-4 px-4">
           <button
-            onClick={() => selectFilter("all")}
-            className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-medium ${
-              filter === "all"
-                ? "bg-emerald-600 text-cream"
+            onClick={() => setBrowseMode("category")}
+            className={`flex-1 py-1.5 rounded-full text-xs font-medium ${
+              browseMode === "category"
+                ? "bg-stone-700 text-cream"
                 : "bg-cream-100 text-stone-500"
             }`}
           >
-            All
+            By Category
           </button>
-          {CATEGORIES.map((c) => (
-            <button
-              key={c.value}
-              onClick={() => selectFilter(c.value)}
-              className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-medium ${
-                filter === c.value
-                  ? "bg-emerald-600 text-cream"
-                  : "bg-cream-100 text-stone-500"
-              }`}
-            >
-              {c.emoji} {c.label}
-            </button>
-          ))}
+          <button
+            onClick={() => setBrowseMode("collection")}
+            className={`flex-1 py-1.5 rounded-full text-xs font-medium ${
+              browseMode === "collection"
+                ? "bg-stone-700 text-cream"
+                : "bg-cream-100 text-stone-500"
+            }`}
+          >
+            By Collection
+          </button>
         </div>
 
-        {filter !== "all" && GROUPING_OPTIONS[filter] ? (
+        <div className="flex gap-2 overflow-x-auto pb-1 mb-2 -mx-4 px-4">
+          {browseMode === "category" ? (
+            <>
+              <button
+                onClick={() => selectFilter("all")}
+                className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-medium ${
+                  filter === "all"
+                    ? "bg-emerald-600 text-cream"
+                    : "bg-cream-100 text-stone-500"
+                }`}
+              >
+                All
+              </button>
+              {CATEGORIES.map((c) => (
+                <button
+                  key={c.value}
+                  onClick={() => selectFilter(c.value)}
+                  className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-medium ${
+                    filter === c.value
+                      ? "bg-emerald-600 text-cream"
+                      : "bg-cream-100 text-stone-500"
+                  }`}
+                >
+                  {c.emoji} {c.label}
+                </button>
+              ))}
+            </>
+          ) : (
+            <>
+              <button
+                onClick={() => setCollectionFilter("all")}
+                className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-medium ${
+                  collectionFilter === "all"
+                    ? "bg-emerald-600 text-cream"
+                    : "bg-cream-100 text-stone-500"
+                }`}
+              >
+                All
+              </button>
+              {SMART_COLLECTIONS.map((c) => (
+                <button
+                  key={c}
+                  onClick={() => setCollectionFilter(c)}
+                  className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-medium ${
+                    collectionFilter === c
+                      ? "bg-emerald-600 text-cream"
+                      : "bg-emerald-50 text-emerald-700"
+                  }`}
+                >
+                  {c === "Favorites" ? "\u2b50 Favorites" : "\ud83d\udd25 Most Worn"}
+                </button>
+              ))}
+              {COLLECTION_OPTIONS.map((c) => (
+                <button
+                  key={c}
+                  onClick={() => setCollectionFilter(c)}
+                  className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-medium ${
+                    collectionFilter === c
+                      ? "bg-emerald-600 text-cream"
+                      : "bg-cream-100 text-stone-500"
+                  }`}
+                >
+                  {c}
+                </button>
+              ))}
+            </>
+          )}
+        </div>
+
+        {browseMode === "category" && filter !== "all" && GROUPING_OPTIONS[filter] ? (
           <div className="flex items-center gap-2 overflow-x-auto pb-1 mb-4 -mx-4 px-4">
             <span className="shrink-0 text-[11px] text-stone-400">Group by</span>
             {GROUPING_OPTIONS[filter].map((opt) => (
@@ -487,7 +656,15 @@ export default function ClosetPage() {
                 </p>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                   {section.items.map((item) => (
-                    <ItemCard key={item.id} item={item} onSelect={setSelected} />
+                    <ItemCard
+                      key={item.id}
+                      item={item}
+                      onSelect={
+                        selectMode ? () => toggleSelectItem(item.id) : setSelected
+                      }
+                      selectMode={selectMode}
+                      isSelected={selectedIds.has(item.id)}
+                    />
                   ))}
                 </div>
               </div>
@@ -496,7 +673,13 @@ export default function ClosetPage() {
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             {filteredItems.map((item) => (
-              <ItemCard key={item.id} item={item} onSelect={setSelected} />
+              <ItemCard
+                key={item.id}
+                item={item}
+                onSelect={selectMode ? () => toggleSelectItem(item.id) : setSelected}
+                selectMode={selectMode}
+                isSelected={selectedIds.has(item.id)}
+              />
             ))}
           </div>
         )}
@@ -627,6 +810,136 @@ export default function ClosetPage() {
             setBulkScreenshot(null);
           }}
         />
+      ) : null}
+
+      {selectMode && selectedIds.size > 0 ? (
+        <div className="fixed bottom-20 left-0 right-0 flex justify-center px-4 z-40">
+          <div className="bg-stone-800 text-cream rounded-full px-4 py-2.5 flex items-center gap-3 shadow-lg">
+            <span className="text-xs">{selectedIds.size} selected</span>
+            <button
+              onClick={() => setBatchSheetOpen(true)}
+              className="text-xs font-medium bg-emerald-600 px-3 py-1.5 rounded-full"
+            >
+              Apply tags
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {batchSheetOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex flex-col md:items-center md:justify-center bg-black/40"
+          onClick={() => setBatchSheetOpen(false)}
+        >
+          <div
+            className="mt-auto md:mt-0 md:max-w-sm md:w-full bg-cream rounded-t-3xl md:rounded-3xl max-h-[80vh] flex flex-col pb-safe"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-clay-100">
+              <div>
+                <h2 className="text-base font-medium text-stone-800">Apply to {selectedIds.size} items</h2>
+                <p className="text-xs text-stone-400">Only the fields you set here get applied</p>
+              </div>
+              <button onClick={() => setBatchSheetOpen(false)} aria-label="Close">
+                <span className="text-stone-400 text-lg">&times;</span>
+              </button>
+            </div>
+            <div className="overflow-y-auto px-5 py-4 space-y-4">
+              <div>
+                <p className="text-xs text-stone-500 mb-1.5">Collections</p>
+                <div className="flex flex-wrap gap-2">
+                  {COLLECTION_OPTIONS.map((c) => (
+                    <button
+                      key={c}
+                      onClick={() =>
+                        setBatchCollections((prev) =>
+                          prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]
+                        )
+                      }
+                      className={`px-3 py-1.5 rounded-full text-xs border ${
+                        batchCollections.includes(c)
+                          ? "border-emerald-600 bg-emerald-600 text-cream font-medium"
+                          : "border-clay-100 text-stone-500 bg-transparent"
+                      }`}
+                    >
+                      {c}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <p className="text-xs text-stone-500 mb-1.5">Color</p>
+                <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto">
+                  {COLOR_OPTIONS.map((c) => (
+                    <button
+                      key={c}
+                      onClick={() => setBatchColor((prev) => (prev === c ? "" : c))}
+                      className={`px-2.5 py-1.5 rounded-full text-xs border ${
+                        batchColor === c
+                          ? "border-emerald-600 bg-emerald-50 text-emerald-700 font-medium"
+                          : "border-clay-100 text-stone-500 bg-transparent"
+                      }`}
+                    >
+                      {c}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <p className="text-xs text-stone-500 mb-1.5">Pattern</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {PATTERN_OPTIONS.map((p) => (
+                    <button
+                      key={p}
+                      onClick={() => setBatchPattern((prev) => (prev === p ? "" : p))}
+                      className={`px-2.5 py-1.5 rounded-full text-xs border ${
+                        batchPattern === p
+                          ? "border-emerald-600 bg-emerald-50 text-emerald-700 font-medium"
+                          : "border-clay-100 text-stone-500 bg-transparent"
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <p className="text-xs text-stone-500 mb-1.5">Fabric</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {FABRIC_OPTIONS.map((f) => (
+                    <button
+                      key={f}
+                      onClick={() => setBatchFabric((prev) => (prev === f ? "" : f))}
+                      className={`px-2.5 py-1.5 rounded-full text-xs border ${
+                        batchFabric === f
+                          ? "border-emerald-600 bg-emerald-50 text-emerald-700 font-medium"
+                          : "border-clay-100 text-stone-500 bg-transparent"
+                      }`}
+                    >
+                      {f}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="px-5 py-4 border-t border-clay-100">
+              <button
+                onClick={() =>
+                  applyBatchTags({
+                    collections: batchCollections.length > 0 ? batchCollections : undefined,
+                    color: batchColor || undefined,
+                    pattern: batchPattern || undefined,
+                    fabric: batchFabric || undefined,
+                  })
+                }
+                disabled={batchApplying}
+                className="w-full rounded-xl bg-emerald-600 text-cream py-3 text-sm font-medium disabled:opacity-60"
+              >
+                {batchApplying ? "Applying..." : `Apply to ${selectedIds.size} items`}
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
 
       <BottomNav />

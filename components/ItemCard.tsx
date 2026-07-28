@@ -7,6 +7,8 @@ import { categoryEmoji } from "@/lib/categories";
 interface ItemCardProps {
   item: ClosetItem;
   onSelect: (item: ClosetItem) => void;
+  selectMode?: boolean;
+  isSelected?: boolean;
 }
 
 // Matches the wording used in ItemEditSheet's category-aware status
@@ -21,7 +23,7 @@ function dirtyBadgeLabel(category: ClosetItem["category"]): string | null {
   return "In the wash";
 }
 
-export default function ItemCard({ item, onSelect }: ItemCardProps) {
+export default function ItemCard({ item, onSelect, selectMode, isSelected }: ItemCardProps) {
   const name = item?.name || "Untitled item";
   const image = item?.image || "";
   const badgeLabel =
@@ -31,7 +33,9 @@ export default function ItemCard({ item, onSelect }: ItemCardProps) {
   return (
     <button
       onClick={() => onSelect(item)}
-      className="relative aspect-[3/4] w-full rounded-2xl overflow-hidden bg-cream-100 text-left group"
+      className={`relative aspect-[3/4] w-full rounded-2xl overflow-hidden bg-cream-100 text-left group ${
+        selectMode && !isSelected ? "opacity-60" : ""
+      }`}
     >
       {image ? (
         // eslint-disable-next-line @next/next/no-img-element
@@ -46,6 +50,28 @@ export default function ItemCard({ item, onSelect }: ItemCardProps) {
           {categoryEmoji(item?.category)}
         </div>
       )}
+
+      {selectMode ? (
+        <div
+          className={`absolute top-2 left-2 w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+            isSelected
+              ? "bg-emerald-600 border-emerald-600"
+              : "bg-black/20 border-white"
+          }`}
+        >
+          {isSelected ? (
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
+              <path
+                d="M5 13l4 4L19 7"
+                stroke="white"
+                strokeWidth="3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          ) : null}
+        </div>
+      ) : null}
 
       {item?.pinned ? (
         <div className="absolute top-2 right-2 bg-cream/90 rounded-full p-1">

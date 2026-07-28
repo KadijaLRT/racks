@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Camera, Loader2, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import BottomNav from "@/components/BottomNav";
-import { fileToResizedDataUrl } from "@/lib/image";
+import { fileToResizedDataUrl, resizeDataUrlForAI } from "@/lib/image";
 import { colorProfileStore } from "@/lib/storage";
 import type { ColorProfile } from "@/lib/types";
 
@@ -32,10 +32,16 @@ export default function ColorPage() {
       const dataUrl = await fileToResizedDataUrl(file);
       if (!dataUrl) throw new Error("Couldn't read that photo.");
 
+      // Less aggressive than the default 512px used for garment
+      // tagging: skin tone/undertone reading genuinely benefits from
+      // more detail than "what color is this shirt" does, so this
+      // trims some size off the stored 900px image without risking
+      // the one thing this feature needs to get right.
+      const aiImage = await resizeDataUrlForAI(dataUrl, 768, 0.75);
       const res = await fetch("/api/analyze-color", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: dataUrl }),
+        body: JSON.stringify({ image: aiImage }),
       });
       const data = await res.json().catch(() => ({}));
       if (data?.error) throw new Error(data.error);

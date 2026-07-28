@@ -1,14 +1,13 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { X, Pin, PinOff, Trash2, Plus, Shuffle, Camera, Loader2, ChevronDown, Sparkles, Image as ImageIcon } from "lucide-react";
+import { X, Pin, PinOff, Trash2, Plus, Shuffle, Camera, Loader2, Sparkles, ChevronDown, Search } from "lucide-react";
 import type { ClosetItem, ItemCategory } from "@/lib/types";
 import { buildLocalItemName } from "@/lib/localNaming";
-import { JEAN_CUT_OPTIONS, RISE_HEIGHT_OPTIONS, SKIRT_LENGTH_OPTIONS, SHORTS_LENGTH_OPTIONS, NECKLINE_OPTIONS, TOP_SILHOUETTE_OPTIONS, DRESS_SILHOUETTE_OPTIONS, SLEEVE_LENGTH_OPTIONS, SLEEVE_OPTIONS, BACK_STYLE_OPTIONS, SUBCATEGORY_SUGGESTIONS, COLOR_OPTIONS, PATTERN_OPTIONS, FABRIC_OPTIONS, WASH_OPTIONS, OUTERWEAR_CLOSURE_OPTIONS, OUTERWEAR_LENGTH_OPTIONS, SHOE_HEEL_OPTIONS, SHOE_TOE_OPTIONS, SHOE_MATERIAL_OPTIONS, accessoryMaterialOptionsForSubcategory, JEWELRY_TYPE_OPTIONS, EARRING_TYPE_OPTIONS, BAG_SIZE_OPTIONS, HAT_TYPE_OPTIONS, MAKEUP_FINISH_OPTIONS, makeupTypeOptionsForSubcategory, makeupShadeOptionsForType, makeupFinishAppliesToTypes, KNIT_TYPE_OPTIONS, HOOD_STYLE_OPTIONS, HOOD_POCKET_OPTIONS, GARMENT_FIT_OPTIONS, SWIMSUIT_TYPE_OPTIONS, SWIMSUIT_TOP_STYLE_OPTIONS, SWIMSUIT_BOTTOM_STYLE_OPTIONS } from "@/lib/types";
+import { JEAN_CUT_OPTIONS, RISE_HEIGHT_OPTIONS, SKIRT_LENGTH_OPTIONS, SHORTS_LENGTH_OPTIONS, NECKLINE_OPTIONS, TOP_SILHOUETTE_OPTIONS, DRESS_SILHOUETTE_OPTIONS, SLEEVE_LENGTH_OPTIONS, SLEEVE_OPTIONS, BACK_STYLE_OPTIONS, SUBCATEGORY_SUGGESTIONS, SUBCATEGORY_GROUPS, COLLECTION_OPTIONS, COLOR_OPTIONS, PATTERN_OPTIONS, FABRIC_OPTIONS, WASH_OPTIONS, OUTERWEAR_CLOSURE_OPTIONS, OUTERWEAR_LENGTH_OPTIONS, SHOE_HEEL_OPTIONS, SHOE_TOE_OPTIONS, SHOE_MATERIAL_OPTIONS, accessoryMaterialOptionsForSubcategory, JEWELRY_TYPE_OPTIONS, EARRING_TYPE_OPTIONS, BAG_SIZE_OPTIONS, HAT_TYPE_OPTIONS, MAKEUP_FINISH_OPTIONS, makeupTypeOptionsForSubcategory, makeupShadeOptionsForType, makeupFinishAppliesToTypes, KNIT_TYPE_OPTIONS, HOOD_STYLE_OPTIONS, HOOD_POCKET_OPTIONS, GARMENT_FIT_OPTIONS, SWIMSUIT_TYPE_OPTIONS, SWIMSUIT_TOP_STYLE_OPTIONS, SWIMSUIT_BOTTOM_STYLE_OPTIONS } from "@/lib/types";
 import { CATEGORIES, categoryLabel } from "@/lib/categories";
-import { fileToResizedDataUrl } from "@/lib/image";
+import { fileToResizedDataUrl, resizeDataUrlForAI } from "@/lib/image";
 import StylingTipList from "@/components/StylingTipList";
-import StyleGuideModal from "@/components/StyleGuideModal";
 import {
   braRecommendation,
   necklaceRecommendation,
@@ -22,9 +21,8 @@ interface ItemEditSheetProps {
   onDelete: (id: string) => void;
   onRemix?: (item: ClosetItem) => void;
   // Rest of the closet, used only to surface "Most used" subcategory
-  // chips (the person's own actual usage, not a generic list) above
-  // the full option set. Optional and safely omitted wherever the
-  // caller doesn't have it handy.
+  // chips (the person's own actual usage, not a generic list).
+  // Optional and safely omitted wherever the caller doesn't have it.
   allItems?: ClosetItem[];
 }
 
@@ -94,6 +92,7 @@ export default function ItemEditSheet({
   const [wearDatePickerOpen, setWearDatePickerOpen] = useState(false);
   const [wearDate, setWearDate] = useState(todayIso);
   const [category, setCategory] = useState<ItemCategory>(item?.category || "top");
+  const [collections, setCollections] = useState<string[]>(item?.collections || []);
   const [subcategory, setSubcategory] = useState(item?.subcategory || "");
   const [tags, setTags] = useState<Record<string, string>>(item?.tags || {});
 
@@ -122,12 +121,18 @@ export default function ItemEditSheet({
   const [newTagValue, setNewTagValue] = useState("");
   const [editingTagKey, setEditingTagKey] = useState<string | null>(null);
   const [editingTagValue, setEditingTagValue] = useState("");
-  const [quickPicksOpen, setQuickPicksOpen] = useState(false);
-  const [styleGuideOpen, setStyleGuideOpen] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
+  // Anatomy Lens: the whole "Details" panel stays collapsed by
+  // default (progressive disclosure at the top level, not just within
+  // it), subcategory search filters the picker, and openGroups tracks
+  // which accordion sections (Everyday/Going Out/etc.) are expanded —
+  // only for categories with enough volume to need grouping at all.
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [subcategorySearch, setSubcategorySearch] = useState("");
+  const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
+  const [historySuggestionDismissed, setHistorySuggestionDismissed] = useState(false);
   const [backImage, setBackImage] = useState<string | undefined>(item?.backImage);
   const [analyzingBack, setAnalyzingBack] = useState(false);
   const [backError, setBackError] = useState("");
@@ -158,10 +163,11 @@ export default function ItemEditSheet({
       // longer describe what's actually in the picture. Non-blocking:
       // the new photo still saves even if this call fails.
       try {
+        const aiImage = await resizeDataUrlForAI(dataUrl);
         const res = await fetch("/api/tag-item", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ image: dataUrl, category }),
+          body: JSON.stringify({ image: aiImage, category }),
         });
         const result = await res.json().catch(() => ({}));
         if (!result?.error) {
@@ -199,10 +205,11 @@ export default function ItemEditSheet({
     setRetagItemError("");
     setRetagItemSuccess(false);
     try {
+      const aiImage = await resizeDataUrlForAI(image);
       const res = await fetch("/api/tag-item", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image, category }),
+        body: JSON.stringify({ image: aiImage, category }),
       });
       const result = await res.json().catch(() => ({}));
       if (result?.error) {
@@ -242,10 +249,11 @@ export default function ItemEditSheet({
       // AI tagging here is a nice-to-have: the back photo still saves
       // even if this call fails, so a person can note details manually.
       try {
+        const aiImage = await resizeDataUrlForAI(dataUrl);
         const res = await fetch("/api/tag-item-back", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ image: dataUrl, category }),
+          body: JSON.stringify({ image: aiImage, category }),
         });
         const result = await res.json().catch(() => ({}));
         if (!result?.error && result?.tags && typeof result.tags === "object") {
@@ -282,6 +290,7 @@ export default function ItemEditSheet({
         laundryStatus,
         closetStatus,
         pinned,
+        collections: collections.length > 0 ? collections : undefined,
         image: image || item.image,
         backImage: backImage || undefined,
         timesWorn: wornCount,
@@ -329,6 +338,7 @@ export default function ItemEditSheet({
         laundryStatus,
         closetStatus,
         pinned,
+        collections: collections.length > 0 ? collections : undefined,
         image: image || item.image,
         backImage: backImage || undefined,
         timesWorn: next,
@@ -386,10 +396,7 @@ export default function ItemEditSheet({
     setEditingTagValue("");
   }
 
-  // Toggle a quick-pick chip (e.g. fit: "Skinny") on/off under a fixed
-  // key, so tapping it again clears the selection instead of stacking
-  // duplicate values.
-  // Quick-pick chips support multi-select: a garment can be, say, both
+  // Attribute chips support multi-select: a garment can be, say, both
   // "Emerald" and "Gold" colored, or have both "Racerback" and a
   // "Keyhole Back" detail. Since tags is a flat Record<string,string>,
   // multiple picks under the same key are stored as one comma-joined
@@ -397,7 +404,7 @@ export default function ItemEditSheet({
   // the data model. This stays compatible with the styling-tip matcher,
   // which already scans all tag values as joined text for keywords, so
   // a comma-joined value still matches each individual color/style word.
-  function parseQuickPickValues(raw: string | undefined): string[] {
+  function parseAttributeValues(raw: string | undefined): string[] {
     return raw
       ? raw
           .split(",")
@@ -406,65 +413,66 @@ export default function ItemEditSheet({
       : [];
   }
 
-  function toggleQuickTag(key: string, value: string) {
+  function toggleAttribute(key: string, value: string) {
     setTags((prev) => {
-      const next = { ...(prev || {}) };
-      const current = parseQuickPickValues(next[key]);
-      const isSelected = current.includes(value);
-      const updated = isSelected
+      const current = parseAttributeValues(prev?.[key]);
+      const next = current.includes(value)
         ? current.filter((v) => v !== value)
         : [...current, value];
-      if (updated.length === 0) {
-        delete next[key];
+      const updated = { ...(prev || {}) };
+      if (next.length > 0) {
+        updated[key] = next.join(", ");
       } else {
-        next[key] = updated.join(", ");
+        delete updated[key];
       }
-      return next;
+      return updated;
     });
   }
 
-  // Renders one labeled row of tap-to-fill chips (e.g. "Fit", "Neckline")
-  // that write into a fixed tag key, multiple chips can be selected at
-  // once. Shared by bottoms (Fit, Rise, Color, Wash) and tops/dresses/
-  // sets (Color, Neckline, Silhouette, Sleeve, Back style) instead of
-  // duplicating the same chip-row markup for each one.
-  function renderQuickPickRow(label: string, tagKey: string, options: string[]) {
-    const selectedValues = parseQuickPickValues(tags?.[tagKey]);
+  // Secondary attribute rows: soft, text-forward segmented pills
+  // (thin outline, no heavy fill unless selected) instead of the
+  // uniformly-boxy button grid this used to be, per the "light text
+  // rows and subtle chips" spec, kept visually quiet since these
+  // appear a dozen times over on a single item.
+  function renderAttributeRow(label: string, tagKey: string, options: string[]) {
+    const selectedValues = parseAttributeValues(tags?.[tagKey]);
     return (
       <div>
         <p className="text-[11px] text-stone-400 mb-1.5">{label}</p>
-        <div className="flex flex-wrap gap-2">
-          {options.map((opt) => (
-            <button
-              key={opt}
-              type="button"
-              onClick={() => toggleQuickTag(tagKey, opt)}
-              className={`px-3 py-2 rounded-full text-xs min-h-[36px] ${
-                selectedValues.includes(opt)
-                  ? "bg-emerald-600 text-cream"
-                  : "bg-cream-100 text-stone-500"
-              }`}
-            >
-              {opt}
-            </button>
-          ))}
+        <div className="flex flex-wrap gap-1.5">
+          {options.map((opt) => {
+            const active = selectedValues.includes(opt);
+            return (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => toggleAttribute(tagKey, opt)}
+                className={`px-2.5 py-1.5 rounded-full text-xs border transition-colors min-h-[32px] ${
+                  active
+                    ? "border-emerald-600 text-emerald-700 bg-emerald-50 font-medium"
+                    : "border-clay-100 text-stone-500 bg-transparent"
+                }`}
+              >
+                {opt}
+              </button>
+            );
+          })}
         </div>
       </div>
     );
   }
 
-  // Subcategory is a plain string field on the item, not a tag, so it
-  // gets its own toggle handler: tapping the currently-selected chip
-  // clears it back to freeform, tapping another replaces it outright.
-  function renderSubcategoryQuickPicks(options: string[]) {
-    if (!options || options.length === 0) return null;
+  // Anatomy Lens subcategory picker: search bar + a "Most used" row
+  // drawn from the person's own closet (not a generic list), then
+  // either collapsible accordion groups (only for categories with
+  // enough volume that a flat list would be a wall of choices) or a
+  // plain filtered list for smaller categories, where an accordion
+  // would just be one more tap for no real benefit.
+  function renderSubcategoryPicker() {
+    const options = SUBCATEGORY_SUGGESTIONS[category] || [];
+    if (options.length === 0) return null;
+    const groups = SUBCATEGORY_GROUPS[category];
 
-    // "Most used" reflects this person's own closet, not a generic
-    // popularity list, computed from whatever other items in the same
-    // category they've actually tagged. Only shown when there's real
-    // data to base it on, and only when not actively searching (it's
-    // a shortcut to skip scanning the full list, not useful once
-    // they've already started narrowing it down).
     const mostUsed = (() => {
       if (!allItems || subcategorySearch.trim()) return [];
       const counts = new Map<string, number>();
@@ -475,79 +483,194 @@ export default function ItemEditSheet({
       }
       return [...counts.entries()]
         .sort((a, b) => b[1] - a[1])
-        .slice(0, 3)
+        .slice(0, 4)
         .map(([key]) => key);
     })();
 
-    const filtered = subcategorySearch.trim()
-      ? options.filter((o) => o.toLowerCase().includes(subcategorySearch.trim().toLowerCase()))
-      : options;
+    function chip(opt: string, keyPrefix = "") {
+      const active = subcategory === opt;
+      return (
+        <button
+          key={keyPrefix + opt}
+          type="button"
+          onClick={() => {
+            setSubcategory((prev) => (prev === opt ? "" : opt));
+            setHistorySuggestionDismissed(false);
+          }}
+          className={`px-3 py-2 rounded-full text-xs min-h-[36px] capitalize border transition-colors ${
+            active
+              ? "border-emerald-600 bg-emerald-600 text-cream font-medium"
+              : "border-clay-100 text-stone-500 bg-transparent"
+          }`}
+        >
+          {opt}
+        </button>
+      );
+    }
+
+    const search = subcategorySearch.trim().toLowerCase();
 
     return (
       <div>
         <p className="text-[11px] text-stone-400 mb-1.5">
           Subcategory{" "}
           <span className="text-stone-300">
-            (tap one below, or type anything in the field above, e.g. what AI
-            named it)
+            (or type anything in the field above, e.g. what AI named it)
           </span>
         </p>
-        {options.length > 8 ? (
-          <input
-            value={subcategorySearch}
-            onChange={(e) => setSubcategorySearch(e.target.value)}
-            placeholder="Search types..."
-            className="w-full mb-2 rounded-xl border border-clay-100 px-3 py-1.5 text-xs bg-white"
-          />
+        {options.length > 6 ? (
+          <div className="relative mb-2">
+            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-300" />
+            <input
+              value={subcategorySearch}
+              onChange={(e) => setSubcategorySearch(e.target.value)}
+              placeholder="Type to find..."
+              className="w-full rounded-xl border border-clay-100 pl-8 pr-3 py-1.5 text-xs bg-white"
+            />
+          </div>
         ) : null}
+
         {mostUsed.length > 0 ? (
           <div className="mb-2">
-            <p className="text-[10px] text-stone-300 mb-1">Most used</p>
+            <p className="text-[10px] text-stone-300 mb-1">⭐ Most used</p>
             <div className="flex flex-wrap gap-2">
-              {mostUsed.map((opt) => (
-                <button
-                  key={`recent-${opt}`}
-                  type="button"
-                  onClick={() => setSubcategory((prev) => (prev === opt ? "" : opt))}
-                  className={`px-3 py-2 rounded-full text-xs min-h-[36px] capitalize ${
-                    subcategory === opt
-                      ? "bg-emerald-600 text-cream"
-                      : "bg-emerald-50 text-emerald-700"
-                  }`}
-                >
-                  ⭐ {opt}
-                </button>
-              ))}
+              {mostUsed.map((opt) => chip(opt, "recent-"))}
             </div>
           </div>
         ) : null}
-        <div className="flex flex-wrap gap-2">
-          {filtered.length === 0 ? (
-            <p className="text-xs text-stone-400">
-              No match, type it directly in the field above.
-            </p>
-          ) : (
-            filtered.map((opt) => (
-              <button
-                key={opt}
-                type="button"
-                onClick={() =>
-                  setSubcategory((prev) => (prev === opt ? "" : opt))
-                }
-                className={`px-3 py-2 rounded-full text-xs min-h-[36px] capitalize ${
-                  subcategory === opt
-                    ? "bg-emerald-600 text-cream"
-                    : "bg-cream-100 text-stone-500"
-                }`}
-              >
-                {opt}
-              </button>
-            ))
-          )}
+
+        {groups ? (
+          <div className="space-y-1.5">
+            {Object.entries(groups).map(([groupLabel, groupOptions]) => {
+              const filtered = search
+                ? groupOptions.filter((o) => o.toLowerCase().includes(search))
+                : groupOptions;
+              if (filtered.length === 0) return null;
+              const isOpen = openGroups.has(groupLabel) || Boolean(search);
+              return (
+                <div key={groupLabel} className="border border-clay-50 rounded-xl overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setOpenGroups((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(groupLabel)) next.delete(groupLabel);
+                        else next.add(groupLabel);
+                        return next;
+                      })
+                    }
+                    className="w-full flex items-center justify-between px-3 py-2 bg-cream-50"
+                  >
+                    <span className="text-xs text-stone-600">{groupLabel}</span>
+                    <ChevronDown
+                      size={13}
+                      className={`text-stone-400 transition-transform ${isOpen ? "rotate-180" : ""}`}
+                    />
+                  </button>
+                  {isOpen ? (
+                    <div className="flex flex-wrap gap-2 p-2.5 bg-white">
+                      {filtered.map((opt) => chip(opt))}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {(search
+              ? options.filter((o) => o.toLowerCase().includes(search))
+              : options
+            ).map((opt) => chip(opt))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Smart History: looks at other items sharing this exact category +
+  // subcategory, and finds attribute values that show up consistently
+  // across them (a real majority, not just "someone picked this
+  // once"), entirely from local tagging history, zero AI. Only
+  // suggests values for attributes the current item doesn't already
+  // have set, and never auto-applies anything without a tap, since a
+  // silent auto-fill would be indistinguishable from a bug if it ever
+  // suggested wrong.
+  function computeHistorySuggestions(): Record<string, string> {
+    if (!allItems || !subcategory.trim()) return {};
+    const matches = allItems.filter(
+      (i) =>
+        i.id !== item.id &&
+        i.category === category &&
+        (i.subcategory || "").trim().toLowerCase() === subcategory.trim().toLowerCase()
+    );
+    if (matches.length < 2) return {};
+
+    const valueCounts = new Map<string, Map<string, number>>();
+    for (const match of matches) {
+      for (const [key, rawValue] of Object.entries(match.tags || {})) {
+        // Only consider the first value of a multi-select tag, same
+        // simplification used elsewhere (grouping, naming), so one
+        // unusual combo doesn't fragment the count.
+        const value = rawValue.split(",")[0]?.trim();
+        if (!value) continue;
+        if (!valueCounts.has(key)) valueCounts.set(key, new Map());
+        const counts = valueCounts.get(key)!;
+        counts.set(value, (counts.get(value) || 0) + 1);
+      }
+    }
+
+    const suggestions: Record<string, string> = {};
+    for (const [key, counts] of valueCounts.entries()) {
+      if (tags?.[key]) continue; // never override something already set
+      const [topValue, topCount] = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
+      // Require a real majority (>50% of matching items agree), not
+      // just the most common of several scattered one-off values.
+      if (topCount / matches.length > 0.5) {
+        suggestions[key] = topValue;
+      }
+    }
+    return suggestions;
+  }
+
+  function renderHistorySuggestionBanner() {
+    if (historySuggestionDismissed) return null;
+    const suggestions = computeHistorySuggestions();
+    const entries = Object.entries(suggestions);
+    if (entries.length === 0) return null;
+    return (
+      <div className="rounded-xl bg-emerald-50 border border-emerald-100 p-2.5 flex items-start justify-between gap-2">
+        <div>
+          <p className="text-xs text-emerald-700 font-medium">
+            You usually tag {subcategory} as:
+          </p>
+          <p className="text-xs text-emerald-600 mt-0.5">
+            {entries.map(([k, v]) => `${k}: ${v}`).join(" · ")}
+          </p>
+        </div>
+        <div className="flex flex-col gap-1 shrink-0">
+          <button
+            type="button"
+            onClick={() => {
+              setTags((prev) => ({ ...(prev || {}), ...suggestions }));
+              setHistorySuggestionDismissed(true);
+            }}
+            className="text-[11px] bg-emerald-600 text-cream px-2.5 py-1 rounded-full font-medium"
+          >
+            Apply
+          </button>
+          <button
+            type="button"
+            onClick={() => setHistorySuggestionDismissed(true)}
+            className="text-[11px] text-emerald-600"
+          >
+            Dismiss
+          </button>
         </div>
       </div>
     );
   }
+
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col md:items-center md:justify-center bg-black/40">
@@ -702,10 +825,7 @@ export default function ItemEditSheet({
                   <label className="text-xs text-stone-500">Category</label>
                   <select
                     value={category}
-                    onChange={(e) => {
-                      setCategory(e.target.value as ItemCategory);
-                      setSubcategorySearch("");
-                    }}
+                    onChange={(e) => setCategory(e.target.value as ItemCategory)}
                     className="w-full mt-1 rounded-xl border border-clay-100 px-3 py-2 text-sm bg-white"
                   >
                     {CATEGORIES.map((c) => (
@@ -719,12 +839,45 @@ export default function ItemEditSheet({
                   <label className="text-xs text-stone-500">Subcategory</label>
                   <input
                     value={subcategory}
-                    onChange={(e) => setSubcategory(e.target.value)}
+                    onChange={(e) => {
+                      setSubcategory(e.target.value);
+                      setHistorySuggestionDismissed(false);
+                    }}
                     className="w-full mt-1 rounded-xl border border-clay-100 px-3 py-2 text-sm bg-white"
                     placeholder="e.g. blouse, sneakers"
                   />
                 </div>
               </div>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs text-stone-500">
+              Collections{" "}
+              <span className="text-stone-300">(optional, pick any that fit)</span>
+            </label>
+            <div className="flex flex-wrap gap-2 mt-1.5">
+              {COLLECTION_OPTIONS.map((c) => {
+                const active = collections.includes(c);
+                return (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() =>
+                      setCollections((prev) =>
+                        prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]
+                      )
+                    }
+                    className={`px-3 py-1.5 rounded-full text-xs border transition-colors ${
+                      active
+                        ? "border-emerald-600 bg-emerald-600 text-cream font-medium"
+                        : "border-clay-100 text-stone-500 bg-transparent"
+                    }`}
+                  >
+                    {c}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -785,259 +938,157 @@ export default function ItemEditSheet({
             </div>
 
             <div className="mt-3 rounded-xl border border-clay-100 overflow-hidden">
-              <div className="w-full flex items-center justify-between px-3 py-2 bg-cream-50">
-                <button
-                  type="button"
-                  onClick={() => setQuickPicksOpen((o) => !o)}
-                  className="flex-1 flex items-center gap-2 text-left"
-                >
-                  <span className="text-xs font-medium text-stone-600">
-                    Quick picks
-                  </span>
-                  <ChevronDown
-                    size={14}
-                    className={`text-stone-400 transition-transform ${
-                      quickPicksOpen ? "rotate-180" : ""
-                    }`}
-                  />
-                </button>
-                {category === "top" || category === "dress" || category === "set" ? (
-                  <button
-                    type="button"
-                    onClick={() => setStyleGuideOpen(true)}
-                    className="flex items-center gap-1 text-[11px] text-emerald-700 font-medium shrink-0"
-                  >
-                    <ImageIcon size={12} />
-                    Style guide
-                  </button>
-                ) : null}
-              </div>
-              {quickPicksOpen ? (
-                <div className="p-3 space-y-2.5 bg-white">
-                  {renderSubcategoryQuickPicks(
-                    SUBCATEGORY_SUGGESTIONS[category] || []
-                  )}
+              <button
+                type="button"
+                onClick={() => setDetailsOpen((o) => !o)}
+                className="w-full flex items-center justify-between px-3 py-2 bg-cream-50"
+              >
+                <span className="text-xs font-medium text-stone-600">Details</span>
+                <ChevronDown
+                  size={14}
+                  className={`text-stone-400 transition-transform ${
+                    detailsOpen ? "rotate-180" : ""
+                  }`}
+                />
+              </button>
+              {detailsOpen ? (
+                <div className="p-3 space-y-3 bg-white">
+                  {renderSubcategoryPicker()}
+                  {renderHistorySuggestionBanner()}
+
                   {category === "accessory" ? (
                     <>
                       {subcategory.toLowerCase().includes("jewelry")
-                        ? renderQuickPickRow(
-                            "Jewelry Type",
-                            "jewelryType",
-                            JEWELRY_TYPE_OPTIONS
-                          )
+                        ? renderAttributeRow("Jewelry Type", "jewelryType", JEWELRY_TYPE_OPTIONS)
                         : null}
                       {subcategory.toLowerCase().includes("hat")
-                        ? renderQuickPickRow(
-                            "Hat Type",
-                            "hatType",
-                            HAT_TYPE_OPTIONS
-                          )
+                        ? renderAttributeRow("Hat Type", "hatType", HAT_TYPE_OPTIONS)
                         : null}
                       {subcategory.toLowerCase().includes("bag")
-                        ? renderQuickPickRow("Size", "size", BAG_SIZE_OPTIONS)
+                        ? renderAttributeRow("Size", "size", BAG_SIZE_OPTIONS)
                         : null}
-                      {renderQuickPickRow(
+                      {renderAttributeRow(
                         "Material",
                         "material",
                         accessoryMaterialOptionsForSubcategory(subcategory)
                       )}
                     </>
                   ) : null}
+
                   {category === "bottom" ? (
                     <>
                       {!subcategory.toLowerCase().includes("short") &&
                       !subcategory.toLowerCase().includes("skort") &&
                       !subcategory.toLowerCase().includes("skirt")
-                        ? renderQuickPickRow("Fit", "fit", JEAN_CUT_OPTIONS)
+                        ? renderAttributeRow("Fit", "fit", JEAN_CUT_OPTIONS)
                         : null}
-                      {renderQuickPickRow("Rise", "rise", RISE_HEIGHT_OPTIONS)}
+                      {renderAttributeRow("Rise", "rise", RISE_HEIGHT_OPTIONS)}
                       {subcategory.toLowerCase().includes("jean") ||
-                      parseQuickPickValues(tags?.color)
-                        .some((c) => c.toLowerCase().includes("denim"))
-                        ? renderQuickPickRow("Wash", "wash", WASH_OPTIONS)
+                      parseAttributeValues(tags?.color).some((c) => c.toLowerCase().includes("denim"))
+                        ? renderAttributeRow("Wash", "wash", WASH_OPTIONS)
                         : null}
                       {subcategory.toLowerCase().includes("skirt")
-                        ? renderQuickPickRow("Length", "length", SKIRT_LENGTH_OPTIONS)
+                        ? renderAttributeRow("Length", "length", SKIRT_LENGTH_OPTIONS)
                         : null}
                       {subcategory.toLowerCase().includes("short")
-                        ? renderQuickPickRow("Length", "length", SHORTS_LENGTH_OPTIONS)
+                        ? renderAttributeRow("Length", "length", SHORTS_LENGTH_OPTIONS)
                         : null}
                     </>
                   ) : null}
+
                   {category === "swimwear" ? (
-                    // Swimwear needs its own vocabulary entirely, none of
-                    // the usual garment attributes (sleeve length, knit
-                    // type, etc.) apply to it.
                     <>
-                      {renderQuickPickRow(
-                        "Swimsuit Type",
-                        "swimsuitType",
-                        SWIMSUIT_TYPE_OPTIONS
-                      )}
-                      {renderQuickPickRow(
-                        "Top Style",
-                        "swimsuitTop",
-                        SWIMSUIT_TOP_STYLE_OPTIONS
-                      )}
-                      {renderQuickPickRow(
-                        "Bottom Style",
-                        "swimsuitBottom",
-                        SWIMSUIT_BOTTOM_STYLE_OPTIONS
-                      )}
-                      {renderQuickPickRow(
-                        "Back Style",
-                        "backStyle",
-                        BACK_STYLE_OPTIONS
-                      )}
+                      {renderAttributeRow("Swimsuit Type", "swimsuitType", SWIMSUIT_TYPE_OPTIONS)}
+                      {renderAttributeRow("Top Style", "swimsuitTop", SWIMSUIT_TOP_STYLE_OPTIONS)}
+                      {renderAttributeRow("Bottom Style", "swimsuitBottom", SWIMSUIT_BOTTOM_STYLE_OPTIONS)}
+                      {renderAttributeRow("Back Style", "backStyle", BACK_STYLE_OPTIONS)}
                     </>
-                  ) : category === "top" || category === "dress" || category === "set" ? (
+                  ) : null}
+
+                  {category === "top" || category === "dress" || category === "set" ? (
                     <>
-                      {renderQuickPickRow("Neckline", "neckline", NECKLINE_OPTIONS)}
-                      {renderQuickPickRow(
-                        "Silhouette",
-                        "silhouette",
-                        TOP_SILHOUETTE_OPTIONS
-                      )}
+                      {renderAttributeRow("Neckline", "neckline", NECKLINE_OPTIONS)}
+                      {renderAttributeRow("Silhouette", "silhouette", TOP_SILHOUETTE_OPTIONS)}
                       {category === "dress"
-                        ? renderQuickPickRow(
-                            "Dress Silhouette",
-                            "dressSilhouette",
-                            DRESS_SILHOUETTE_OPTIONS
-                          )
+                        ? renderAttributeRow("Dress Silhouette", "dressSilhouette", DRESS_SILHOUETTE_OPTIONS)
                         : null}
-                      {renderQuickPickRow(
-                        "Sleeve Length",
-                        "sleeveLength",
-                        SLEEVE_LENGTH_OPTIONS
-                      )}
-                      {renderQuickPickRow("Sleeve Style", "sleeve", SLEEVE_OPTIONS)}
-                      {renderQuickPickRow(
-                        "Back Style",
-                        "backStyle",
-                        BACK_STYLE_OPTIONS
-                      )}
+                      {renderAttributeRow("Sleeve Length", "sleeveLength", SLEEVE_LENGTH_OPTIONS)}
+                      {renderAttributeRow("Sleeve Style", "sleeve", SLEEVE_OPTIONS)}
+                      {renderAttributeRow("Back Style", "backStyle", BACK_STYLE_OPTIONS)}
                       {subcategory.toLowerCase().includes("sweater") ||
                       subcategory.toLowerCase().includes("cardigan")
-                        ? renderQuickPickRow("Knit Type", "knitType", KNIT_TYPE_OPTIONS)
+                        ? renderAttributeRow("Knit Type", "knitType", KNIT_TYPE_OPTIONS)
                         : null}
                       {subcategory.toLowerCase().includes("hoodie") ? (
                         <>
-                          {renderQuickPickRow(
-                            "Hood Style",
-                            "hoodStyle",
-                            HOOD_STYLE_OPTIONS
-                          )}
-                          {renderQuickPickRow(
-                            "Pocket",
-                            "pocket",
-                            HOOD_POCKET_OPTIONS
-                          )}
+                          {renderAttributeRow("Hood Style", "hoodStyle", HOOD_STYLE_OPTIONS)}
+                          {renderAttributeRow("Pocket", "pocket", HOOD_POCKET_OPTIONS)}
                         </>
                       ) : null}
                       {subcategory.toLowerCase().includes("sweatsuit") ||
                       subcategory.toLowerCase().includes("tracksuit") ||
                       subcategory.toLowerCase().includes("loungewear")
-                        ? renderQuickPickRow(
-                            "Fit",
-                            "sweatsuitFit",
-                            GARMENT_FIT_OPTIONS
-                          )
+                        ? renderAttributeRow("Fit", "sweatsuitFit", GARMENT_FIT_OPTIONS)
                         : null}
                     </>
                   ) : null}
+
                   {category === "outerwear" ? (
                     <>
-                      {renderQuickPickRow(
-                        "Closure",
-                        "closure",
-                        OUTERWEAR_CLOSURE_OPTIONS
-                      )}
-                      {renderQuickPickRow(
-                        "Length",
-                        "length",
-                        OUTERWEAR_LENGTH_OPTIONS
-                      )}
-                      {renderQuickPickRow("Fit", "fit", GARMENT_FIT_OPTIONS)}
+                      {renderAttributeRow("Closure", "closure", OUTERWEAR_CLOSURE_OPTIONS)}
+                      {renderAttributeRow("Length", "length", OUTERWEAR_LENGTH_OPTIONS)}
+                      {renderAttributeRow("Fit", "fit", GARMENT_FIT_OPTIONS)}
                     </>
                   ) : null}
+
                   {category === "shoes" ? (
                     <>
                       {subcategory.toLowerCase().includes("heel") ||
                       subcategory.toLowerCase().includes("boot") ||
                       subcategory.toLowerCase().includes("sandal")
-                        ? renderQuickPickRow(
-                            "Heel Height",
-                            "heelHeight",
-                            SHOE_HEEL_OPTIONS
-                          )
+                        ? renderAttributeRow("Heel Height", "heelHeight", SHOE_HEEL_OPTIONS)
                         : null}
                       {subcategory.toLowerCase().includes("heel") ||
                       subcategory.toLowerCase().includes("boot") ||
                       subcategory.toLowerCase().includes("flat")
-                        ? renderQuickPickRow(
-                            "Toe Shape",
-                            "toeShape",
-                            SHOE_TOE_OPTIONS
-                          )
+                        ? renderAttributeRow("Toe Shape", "toeShape", SHOE_TOE_OPTIONS)
                         : null}
-                      {renderQuickPickRow(
-                        "Material",
-                        "material",
-                        SHOE_MATERIAL_OPTIONS
-                      )}
+                      {renderAttributeRow("Material", "material", SHOE_MATERIAL_OPTIONS)}
                     </>
                   ) : null}
+
                   {category === "makeup" ? (
                     <>
-                      {renderQuickPickRow(
+                      {renderAttributeRow(
                         "Makeup Type",
                         "makeupType",
                         makeupTypeOptionsForSubcategory(subcategory)
                       )}
                       {(() => {
-                        const selectedTypes = parseQuickPickValues(
-                          tags?.makeupType
-                        );
+                        const selectedTypes = parseAttributeValues(tags?.makeupType);
                         const shadeOptions = Array.from(
-                          new Set(
-                            selectedTypes.flatMap((t) =>
-                              makeupShadeOptionsForType(t)
-                            )
-                          )
+                          new Set(selectedTypes.flatMap((t) => makeupShadeOptionsForType(t)))
                         );
                         if (shadeOptions.length === 0) return null;
-                        return renderQuickPickRow(
-                          "Shade",
-                          "shade",
-                          shadeOptions
-                        );
+                        return renderAttributeRow("Shade", "shade", shadeOptions);
                       })()}
                       {(() => {
-                        const selectedTypes = parseQuickPickValues(
-                          tags?.makeupType
-                        );
+                        const selectedTypes = parseAttributeValues(tags?.makeupType);
                         if (!makeupFinishAppliesToTypes(selectedTypes)) return null;
-                        return renderQuickPickRow(
-                          "Finish",
-                          "finish",
-                          MAKEUP_FINISH_OPTIONS
-                        );
+                        return renderAttributeRow("Finish", "finish", MAKEUP_FINISH_OPTIONS);
                       })()}
                     </>
                   ) : null}
+
                   {category !== "makeup" ? (
                     <>
                       <div className="border-t border-clay-50 -mx-3" />
-                      {renderQuickPickRow("Color", "color", COLOR_OPTIONS)}
-                      {parseQuickPickValues(tags?.jewelryType).includes("Earrings")
-                        ? renderQuickPickRow(
-                            "Earring Type",
-                            "earringType",
-                            EARRING_TYPE_OPTIONS
-                          )
-                        : renderQuickPickRow("Pattern", "pattern", PATTERN_OPTIONS)}
+                      {renderAttributeRow("Color", "color", COLOR_OPTIONS)}
+                      {parseAttributeValues(tags?.jewelryType).includes("Earrings")
+                        ? renderAttributeRow("Earring Type", "earringType", EARRING_TYPE_OPTIONS)
+                        : renderAttributeRow("Pattern", "pattern", PATTERN_OPTIONS)}
                       {category !== "shoes" && category !== "accessory"
-                        ? renderQuickPickRow("Fabric", "fabric", FABRIC_OPTIONS)
+                        ? renderAttributeRow("Fabric", "fabric", FABRIC_OPTIONS)
                         : null}
                     </>
                   ) : null}
@@ -1249,10 +1300,6 @@ export default function ItemEditSheet({
           </div>
         </div>
       </div>
-
-      {styleGuideOpen ? (
-        <StyleGuideModal onClose={() => setStyleGuideOpen(false)} />
-      ) : null}
     </div>
   );
 }

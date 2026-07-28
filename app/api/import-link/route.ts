@@ -19,6 +19,125 @@ function extractMeta(html: string, prop: string): string | null {
   return null;
 }
 
+export interface StructuredProductData {
+  name?: string;
+  color?: string;
+  material?: string;
+  brand?: string;
+  productCategory?: string;
+}
+
+// Conservative on purpose: only maps when a retailer's category string
+// contains an unambiguous keyword. Returns null for anything vague
+// ("Women's" alone, "New Arrivals," etc.) rather than guess, since a
+// wrong category here would silently skip AI verification and save
+// the wrong thing.
+const CATEGORY_KEYWORDS: [string, string][] = [
+  ["dress", "dress"],
+  ["jean", "bottom"],
+  ["pant", "bottom"],
+  ["trouser", "bottom"],
+  ["short", "bottom"],
+  ["skirt", "bottom"],
+  ["legging", "bottom"],
+  ["jacket", "outerwear"],
+  ["coat", "outerwear"],
+  ["blazer", "outerwear"],
+  ["cardigan", "outerwear"],
+  ["shoe", "shoes"],
+  ["sneaker", "shoes"],
+  ["boot", "shoes"],
+  ["heel", "shoes"],
+  ["sandal", "shoes"],
+  ["bag", "accessory"],
+  ["jewelry", "accessory"],
+  ["necklace", "accessory"],
+  ["earring", "accessory"],
+  ["belt", "accessory"],
+  ["scarf", "accessory"],
+  ["hat", "accessory"],
+  ["bikini", "swimwear"],
+  ["swimwear", "swimwear"],
+  ["swimsuit", "swimwear"],
+  ["top", "top"],
+  ["shirt", "top"],
+  ["blouse", "top"],
+  ["sweater", "top"],
+];
+
+export function mapToItemCategory(rawCategory: string): string | null {
+  const text = rawCategory.toLowerCase();
+  for (const [keyword, category] of CATEGORY_KEYWORDS) {
+    if (text.includes(keyword)) return category;
+  }
+  return null;
+}
+
+/**
+ * Many shopping sites embed a JSON-LD <script type="application/ld+json">
+ * block with schema.org Product data (name/color/material/brand),
+ * filled in by the retailer's own system, not guessed from a photo.
+ * When present and usable, this lets a wishlist import skip the AI
+ * vision tagging call entirely for that item, since the retailer
+ * already told us what it is more reliably than image classification
+ * would. Best-effort: retailers structure this data inconsistently
+ * (sometimes a single object, sometimes wrapped in @graph, sometimes
+ * an array of blocks), so this tries the common shapes and returns
+ * whatever it can find rather than requiring one exact format.
+ */
+export function extractStructuredProductData(html: string): StructuredProductData | null {
+  const blocks = html.match(
+    /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi
+  );
+  if (!blocks) return null;
+
+  for (const block of blocks) {
+    const jsonText = block.replace(/<script[^>]*>/i, "").replace(/<\/script>/i, "");
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(jsonText);
+    } catch {
+      continue; // malformed block, try the next one rather than failing outright
+    }
+
+    const candidates: Record<string, unknown>[] = [];
+    const flatten = (node: unknown) => {
+      if (!node || typeof node !== "object") return;
+      if (Array.isArray(node)) {
+        node.forEach(flatten);
+        return;
+      }
+      const obj = node as Record<string, unknown>;
+      if (obj["@graph"]) flatten(obj["@graph"]);
+      candidates.push(obj);
+    };
+    flatten(parsed);
+
+    const product = candidates.find((c) => {
+      const type = c["@type"];
+      return type === "Product" || (Array.isArray(type) && type.includes("Product"));
+    });
+    if (!product) continue;
+
+    const name = typeof product.name === "string" ? product.name : undefined;
+    const color = typeof product.color === "string" ? product.color : undefined;
+    const material = typeof product.material === "string" ? product.material : undefined;
+    const brand =
+      typeof product.brand === "string"
+        ? product.brand
+        : typeof (product.brand as Record<string, unknown>)?.name === "string"
+        ? ((product.brand as Record<string, unknown>).name as string)
+        : undefined;
+    const productCategory =
+      typeof product.category === "string" ? product.category : undefined;
+
+    if (name || color || material || brand || productCategory) {
+      return { name, color, material, brand, productCategory };
+    }
+  }
+  return null;
+}
+
 async function fetchWithTimeout(url: string, init?: RequestInit): Promise<Response> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -134,6 +253,10 @@ export async function POST(req: NextRequest) {
       extractMeta(html, "twitter:title") ||
       html.match(/<title>([^<]+)<\/title>/i)?.[1] ||
       "Imported item";
+    const structured = extractStructuredProductData(html);
+    const mappedCategory = structured?.productCategory
+      ? mapToItemCategory(structured.productCategory)
+      : null;
 
     if (!imageUrl || !isSafeExternalUrl(imageUrl)) {
       return NextResponse.json(
@@ -185,6 +308,11 @@ export async function POST(req: NextRequest) {
       image: dataUrl,
       title: sanitizeGroqText(title.slice(0, 200)),
       sourceUrl: url,
+      structuredColor: structured?.color ? sanitizeGroqText(structured.color.slice(0, 60)) : undefined,
+      structuredMaterial: structured?.material
+        ? sanitizeGroqText(structured.material.slice(0, 60))
+        : undefined,
+      structuredCategory: mappedCategory || undefined,
     });
   } catch (err) {
     console.error("import-link failed:", err instanceof Error ? err.message : err);

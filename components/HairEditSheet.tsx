@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { X, Camera, Loader2, Plus, Trash2 } from "lucide-react";
-import { fileToResizedDataUrl } from "@/lib/image";
+import { fileToResizedDataUrl, resizeDataUrlForAI } from "@/lib/image";
 
 interface HairEditSheetProps {
   title: string;
@@ -67,10 +67,11 @@ export default function HairEditSheet({
     setRetagging(true);
     setRetagError("");
     try {
+      const aiImage = await resizeDataUrlForAI(currentImage);
       const res = await fetch("/api/tag-hair", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: currentImage, mode: retagMode }),
+        body: JSON.stringify({ image: aiImage, mode: retagMode }),
       });
       const tagged = await res.json().catch(() => ({}));
       if (tagged?.error) throw new Error(tagged.error);

@@ -3,11 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Plus, Loader2, Link2, Camera, Trash2, ShoppingBag, X } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
-import { fileToResizedDataUrl } from "@/lib/image";
+import { fileToResizedDataUrl, resizeDataUrlForAI } from "@/lib/image";
 import { wishlistStore, closetStore, measurementsStore } from "@/lib/storage";
 import type { WishlistItem, ClosetItem, UserMeasurements } from "@/lib/types";
 import { categoryEmoji } from "@/lib/categories";
 import { stripImagesForPrompt } from "@/lib/stripImagesForPrompt";
+import { checkWishlistItemLocally } from "@/lib/localWishlistCheck";
 
 interface CartAnalysis {
   colorCohesion: string;
@@ -44,17 +45,52 @@ export default function WishlistPage() {
     });
   }, []);
 
-  async function tagAndAnalyze(image: string, sourceUrl?: string) {
+  async function tagAndAnalyze(
+    image: string,
+    sourceUrl?: string,
+    structuredHint?: {
+      title?: string;
+      category?: string;
+      color?: string;
+      material?: string;
+    }
+  ) {
     let name = "Untitled item";
     let category: WishlistItem["category"] = "top";
     let subcategory = "";
     let tags: Record<string, string> = {};
 
+    // A retailer's own structured product data (JSON-LD embedded in
+    // the page) is more reliable than image classification for the
+    // basics, and it's already sitting right there, no vision model
+    // needed to re-derive what the site already told us. Only used
+    // when confident (a real name and a category we could map
+    // unambiguously); otherwise falls through to AI tagging as usual.
+    if (structuredHint?.title && structuredHint?.category) {
+      name = structuredHint.title;
+      category = structuredHint.category as WishlistItem["category"];
+      if (structuredHint.color) tags.color = structuredHint.color;
+      if (structuredHint.material) tags.fabric = structuredHint.material;
+
+      const saved = await wishlistStore.create({
+        image,
+        name,
+        category,
+        subcategory,
+        tags,
+        sourceUrl,
+      });
+      setItems((prev) => [saved, ...(prev || [])]);
+      await runAnalysis(saved);
+      return;
+    }
+
     try {
+      const aiImage = await resizeDataUrlForAI(image);
       const res = await fetch("/api/tag-wishlist-item", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image }),
+        body: JSON.stringify({ image: aiImage }),
       });
       const tagged = await res.json().catch(() => ({}));
       if (!tagged?.error) {
@@ -115,6 +151,33 @@ export default function WishlistPage() {
     }
   }
 
+  // Entirely local, zero AI, zero network call: flags a likely
+  // duplicate using real signals (category, subcategory, color
+  // compatibility) instead of a model's judgment. Doesn't catch
+  // subtler style-fit reasoning the AI version can, but answers the
+  // literal "do I already own something like this" question just fine
+  // without spending a Groq call on it.
+  function checkWithoutAI(item: WishlistItem) {
+    setFailedAnalysisIds((prev) => {
+      const next = new Set(prev);
+      next.delete(item.id);
+      return next;
+    });
+    const local = checkWishlistItemLocally(item, closetItems);
+    const updated: WishlistItem = {
+      ...item,
+      analysis: {
+        verdict: local.verdict,
+        matchCount: local.matchCount,
+        fillsGap: local.fillsGap,
+        pairsWith: local.pairsWith,
+        versatilityNote: local.versatilityNote,
+      },
+    };
+    wishlistStore.update(updated);
+    setItems((prev) => (prev || []).map((i) => (i.id === item.id ? updated : i)));
+  }
+
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
@@ -146,7 +209,12 @@ export default function WishlistPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (data?.error) throw new Error(data.error);
-      await tagAndAnalyze(data.image, data.sourceUrl || url);
+      await tagAndAnalyze(data.image, data.sourceUrl || url, {
+        title: data.title,
+        category: data.structuredCategory,
+        color: data.structuredColor,
+        material: data.structuredMaterial,
+      });
       setLinkUrl("");
       setAddOpen(false);
     } catch (err) {
@@ -319,14 +387,32 @@ export default function WishlistPage() {
                       </div>
                     </>
                   ) : failedAnalysisIds.has(item.id) ? (
-                    <button
-                      onClick={() => runAnalysis(item)}
-                      className="text-xs text-emerald-700 font-medium mt-0.5"
-                    >
-                      Couldn&rsquo;t analyze, tap to retry
-                    </button>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <button
+                        onClick={() => runAnalysis(item)}
+                        className="text-xs text-emerald-700 font-medium"
+                      >
+                        Couldn&rsquo;t analyze, tap to retry
+                      </button>
+                      <span className="text-stone-300">·</span>
+                      <button
+                        onClick={() => checkWithoutAI(item)}
+                        className="text-xs text-stone-500"
+                      >
+                        Check without AI
+                      </button>
+                    </div>
                   ) : (
-                    <p className="text-xs text-stone-400 mt-0.5">Analyzing...</p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <p className="text-xs text-stone-400">Analyzing...</p>
+                      <span className="text-stone-300">·</span>
+                      <button
+                        onClick={() => checkWithoutAI(item)}
+                        className="text-xs text-stone-500"
+                      >
+                        Check without AI instead
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>

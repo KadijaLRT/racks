@@ -39,6 +39,55 @@ export const SUBCATEGORY_SUGGESTIONS: Record<ItemCategory, string[]> = {
   makeup: ["face", "eyes", "lips", "cheeks"],
 };
 
+// Anatomy Lens accordion groupings: only defined for categories with
+// enough subcategory volume that a flat list would be "a wall of
+// choices" (the exact problem this exists to solve). Small categories
+// (Bottoms, Dresses, Sets, Outerwear, Swimwear, Makeup, all 4-6
+// options) intentionally have no entry here and fall back to a plain
+// search+recent+flat-list picker, since folding a handful of options
+// behind a closed accordion would add a tap, not remove one.
+export const SUBCATEGORY_GROUPS: Partial<Record<ItemCategory, Record<string, string[]>>> = {
+  top: {
+    Everyday: ["t-shirt", "tank", "camisole", "tube top", "crop top", "bralette", "bodysuit"],
+    "Going Out": ["halter top", "off-shoulder top", "peplum top", "wrap top"],
+    Professional: ["button-down", "henley", "polo", "blouse"],
+    Knitwear: ["sweater", "turtleneck", "hoodie", "sweatshirt"],
+    Other: ["tunic"],
+  },
+  accessory: {
+    Jewelry: ["jewelry", "jewelry set"],
+    "Bags & Belts": ["bag", "belt"],
+    Weather: ["hat", "sunglasses", "scarf"],
+    Basics: ["socks", "tights", "stockings"],
+  },
+  shoes: {
+    Everyday: ["sneakers", "flats"],
+    "Going Out": ["heels"],
+    Weather: ["boots", "sandals", "flip flops", "slides"],
+  },
+};
+
+// The Stylist Lens: manually-assignable vibe/context collections, the
+// primary way people browse their own closet rather than category
+// taxonomy. Deliberately not category-specific (any item, any
+// category, can belong to "Date Night") and deliberately multi-select
+// (an item can live in several at once).
+export const COLLECTION_OPTIONS = [
+  "Streetwear",
+  "Minimal",
+  "Date Night",
+  "Work",
+  "Vacation",
+  "Winter",
+  "Summer",
+];
+
+// Smart collections: computed live from existing fields (timesWorn,
+// pinned) rather than stored as tags, so they can never drift out of
+// sync with actual usage. Shown alongside COLLECTION_OPTIONS when
+// browsing, but never offered as something to manually assign.
+export const SMART_COLLECTIONS = ["Most Worn", "Favorites"] as const;
+
 // Quick-pick tag values for bottoms, shown as tap-to-fill chips in the
 // item editor rather than requiring free-text entry for common,
 // well-known categories like pant cut and rise height.
@@ -677,6 +726,15 @@ export interface ClosetItem {
   closetStatus?: "keep" | "donate" | "sell" | "repair" | "store";
   notes?: string;
   createdAt: number;
+  // The "Stylist Lens": how people actually think about their own
+  // wardrobe (vibes/contexts), independent of and overlapping with
+  // the Anatomy Lens category/subcategory. An item can belong to any
+  // number of these at once (a black silk slip dress can be both
+  // "Date Night" and "Minimal"). See COLLECTION_OPTIONS for the set
+  // of manually-assignable values; "Most Worn" and "Favorites" are
+  // deliberately not stored here since they're computed live from
+  // timesWorn/pinned rather than tagged by hand.
+  collections?: string[];
 }
 
 export type HairMode = "selfie" | "wig" | "description";

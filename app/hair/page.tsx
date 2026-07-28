@@ -5,7 +5,7 @@ import { Camera, Loader2, Plus, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import BottomNav from "@/components/BottomNav";
 import HairEditSheet from "@/components/HairEditSheet";
-import { fileToResizedDataUrl } from "@/lib/image";
+import { fileToResizedDataUrl, resizeDataUrlForAI } from "@/lib/image";
 import { hairProfileStore, wigStore } from "@/lib/storage";
 import type { HairMode, HairProfile, WigItem } from "@/lib/types";
 
@@ -53,10 +53,11 @@ export default function HairPage() {
       let name = "";
       let tags: Record<string, string> = {};
       try {
+        const aiImage = await resizeDataUrlForAI(dataUrl);
         const res = await fetch("/api/tag-hair", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ image: dataUrl, mode: "selfie" }),
+          body: JSON.stringify({ image: aiImage, mode: "selfie" }),
         });
         const tagged = await res.json().catch(() => ({}));
         if (!tagged?.error) {
@@ -96,10 +97,11 @@ export default function HairPage() {
       let name = "Untitled wig";
       let tags: Record<string, string> = {};
       try {
+        const aiImage = await resizeDataUrlForAI(dataUrl);
         const res = await fetch("/api/tag-hair", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ image: dataUrl, mode: "wig" }),
+          body: JSON.stringify({ image: aiImage, mode: "wig" }),
         });
         const tagged = await res.json().catch(() => ({}));
         if (!tagged?.error) {

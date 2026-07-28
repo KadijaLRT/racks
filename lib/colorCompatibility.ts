@@ -1,9 +1,11 @@
-// Groups colors into families for compatibility scoring, so local
-// outfit assembly can prefer pieces that actually go together instead
-// of picking blind. A color can belong to more than one family (e.g.
-// Mustard reads as both an earth tone and a warm color) — compatible
-// if either color is neutral, they're the same color, or they share
-// at least one family.
+// Real color-wheel theory (complementary/analogous/monochromatic hue
+// relationships computed from actual RGB→HSL conversion) instead of a
+// hand-curated list of "these colors go together" buckets. Reuses the
+// same canonical RGB reference table dominantColor.ts uses for pixel
+// matching, so there's one source of truth for what "Rust" or
+// "Emerald" actually means as a color, not two drifting definitions.
+
+import { COLOR_REFERENCE } from "./dominantColor";
 
 const NEUTRALS = new Set([
   "black", "white", "gray", "charcoal", "ivory", "cream", "beige",
@@ -11,23 +13,48 @@ const NEUTRALS = new Set([
   "khaki", "gold", "silver",
 ]);
 
-const FAMILIES: Record<string, string[]> = {
-  earth: ["rust", "terracotta", "caramel", "mustard", "olive", "forest", "chocolate", "brown", "camel", "khaki"],
-  jewel: ["emerald", "burgundy", "plum", "ruby", "maroon", "teal", "navy"],
-  warm: ["red", "orange", "coral", "peach", "yellow", "mustard", "terracotta", "rust"],
-  coolPastel: ["blush", "pink", "rose", "lavender", "lilac", "mint", "sky blue"],
-  boldCool: ["fuchsia", "magenta", "purple", "violet", "cerulean", "blue", "green", "emerald", "teal"],
-};
-
-function familiesOf(color: string): string[] {
-  const c = color.toLowerCase().trim();
-  return Object.entries(FAMILIES)
-    .filter(([, colors]) => colors.includes(c))
-    .map(([family]) => family);
-}
-
 function isNeutral(color: string): boolean {
   return NEUTRALS.has(color.toLowerCase().trim());
+}
+
+function rgbToHsl(r: number, g: number, b: number): { h: number; s: number; l: number } {
+  r /= 255;
+  g /= 255;
+  b /= 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  if (max === min) return { h: 0, s: 0, l };
+  const d = max - min;
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  let h: number;
+  switch (max) {
+    case r:
+      h = ((g - b) / d + (g < b ? 6 : 0)) * 60;
+      break;
+    case g:
+      h = ((b - r) / d + 2) * 60;
+      break;
+    default:
+      h = ((r - g) / d + 4) * 60;
+  }
+  return { h, s, l };
+}
+
+function hueOf(colorName: string): number | null {
+  const ref = COLOR_REFERENCE[colorName.trim()];
+  if (!ref) return null;
+  const { h, s } = rgbToHsl(ref[0], ref[1], ref[2]);
+  // Low-saturation colors (near-grays) don't have a meaningful hue for
+  // this purpose even if they're not in the explicit NEUTRALS list.
+  if (s < 0.12) return null;
+  return h;
+}
+
+/** Circular distance between two hues on the 360° color wheel. */
+function hueDistance(a: number, b: number): number {
+  const diff = Math.abs(a - b) % 360;
+  return diff > 180 ? 360 - diff : diff;
 }
 
 /** Extracts every color value from a possibly comma-joined tag string. */
@@ -40,11 +67,13 @@ export function colorsOf(colorTag: string | undefined | null): string[] {
 }
 
 /**
- * True if two colors work together: either is neutral, multicolor,
- * identical, or they share a family. This is intentionally generous
- * (multicolor items and neutrals pair with anything) rather than a
- * strict rule engine, since the goal is "don't actively clash," not
- * "match a professional colorist's exact palette theory."
+ * True if two colors work together, using actual color-wheel
+ * relationships: monochromatic/analogous (hues within 45° of each
+ * other) or complementary (roughly opposite, 150-210° apart) both
+ * read as intentional pairings; anything in between (a 90-140° gap,
+ * the "clashing" zone in traditional theory) does not. Neutrals,
+ * multicolor, and exact matches are always compatible regardless,
+ * same as before.
  */
 export function colorsCompatible(a: string, b: string): boolean {
   const ca = a.toLowerCase().trim();
@@ -52,9 +81,16 @@ export function colorsCompatible(a: string, b: string): boolean {
   if (ca === cb) return true;
   if (ca === "multicolor" || cb === "multicolor") return true;
   if (isNeutral(ca) || isNeutral(cb)) return true;
-  const familiesA = familiesOf(ca);
-  const familiesB = familiesOf(cb);
-  return familiesA.some((f) => familiesB.includes(f));
+
+  const hueA = hueOf(ca);
+  const hueB = hueOf(cb);
+  // No reference hue for one or both (an unrecognized color name, e.g.
+  // something freeform someone typed): assume compatible rather than
+  // penalize for missing data.
+  if (hueA === null || hueB === null) return true;
+
+  const dist = hueDistance(hueA, hueB);
+  return dist <= 45 || (dist >= 150 && dist <= 210);
 }
 
 /**

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import Link from "next/link";
-import { planStore } from "@/lib/storage";
+import { planStore, appSettingsStore } from "@/lib/storage";
 import type { ClosetItem, UpcomingPlan } from "@/lib/types";
 
 interface Nudge {
@@ -21,13 +21,39 @@ export default function NudgesList({ items }: { items: ClosetItem[] | undefined 
   const [plans, setPlans] = useState<UpcomingPlan[]>([]);
   const [dismissed, setDismissed] = useState<string[]>([]);
   const [now] = useState(() => Date.now());
+  const [lastBackupAt, setLastBackupAt] = useState<number | null | undefined>(undefined);
 
   useEffect(() => {
     planStore.getAll().then((all) => setPlans(all || []));
+    appSettingsStore.get().then((settings) => setLastBackupAt(settings?.lastBackupAt ?? null));
   }, []);
 
   const safeItems = items || [];
   const nudges: Nudge[] = [];
+
+  // Highest priority of any nudge here: everything in this app lives
+  // only on this device (or, on iOS, tied to the specific Home Screen
+  // icon instance), with no server copy. A stale or missing backup is
+  // a real risk of permanent data loss, not a styling suggestion, so
+  // it goes first regardless of what else would otherwise show.
+  const BACKUP_NUDGE_DAYS = 7;
+  const daysSinceBackup =
+    lastBackupAt != null ? Math.floor((now - lastBackupAt) / (24 * 60 * 60 * 1000)) : null;
+  if (
+    safeItems.length > 0 &&
+    lastBackupAt !== undefined && // still loading, don't flash a false nudge
+    (lastBackupAt === null || (daysSinceBackup ?? 0) >= BACKUP_NUDGE_DAYS)
+  ) {
+    nudges.push({
+      id: `backup-${lastBackupAt === null ? "never" : Math.floor(now / (24 * 60 * 60 * 1000))}`,
+      text:
+        lastBackupAt === null
+          ? "Your closet has never been backed up. This data lives only on this device."
+          : `It's been ${daysSinceBackup} days since your last backup.`,
+      tapLabel: "Back up now",
+      href: "/settings",
+    });
+  }
 
   const neverWorn = safeItems.find(
     (i) => i?.timesWorn === 0 && i?.category !== "makeup"

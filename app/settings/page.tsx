@@ -1,18 +1,28 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { ArrowLeft, Download, Upload, Trash2, Loader2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowLeft, Download, Upload, Trash2, Loader2, AlertTriangle } from "lucide-react";
 import Link from "next/link";
 import BottomNav from "@/components/BottomNav";
-import { exportAllData, importAllData } from "@/lib/storage";
+import { exportAllData, importAllData, appSettingsStore } from "@/lib/storage";
 import { keys, del } from "idb-keyval";
+
+const STALE_BACKUP_DAYS = 3;
 
 export default function SettingsPage() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [confirmingClear, setConfirmingClear] = useState(false);
+  const [lastBackupAt, setLastBackupAt] = useState<number | null>(null);
+  const [now] = useState(() => Date.now());
   const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    appSettingsStore.get().then((settings) => {
+      setLastBackupAt(settings?.lastBackupAt ?? null);
+    });
+  }, []);
 
   async function handleExport() {
     setBusy(true);
@@ -32,7 +42,11 @@ export default function SettingsPage() {
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
-      setMessage("Backup downloaded.");
+      const now = Date.now();
+      const settings = await appSettingsStore.get();
+      await appSettingsStore.save({ ...(settings || {}), lastBackupAt: now });
+      setLastBackupAt(now);
+      setMessage("Backup downloaded. Keep this file somewhere off this device (email, cloud storage, AirDrop to a computer) — this is your only copy outside this browser.");
     } catch {
       setError("Couldn't create a backup file.");
     } finally {
@@ -116,33 +130,62 @@ export default function SettingsPage() {
           </div>
         ) : null}
 
-        <div className="bg-white rounded-2xl p-4 space-y-3">
-          <div>
-            <p className="text-sm font-medium text-stone-700">Your data</p>
-            <p className="text-xs text-stone-400 mt-0.5">
-              Everything in Racks lives only on this device. Back it up
-              before clearing your browser data or switching devices.
-            </p>
-          </div>
+        {(() => {
+          const daysSince =
+            lastBackupAt != null
+              ? Math.floor((now - lastBackupAt) / (24 * 60 * 60 * 1000))
+              : null;
+          const stale = daysSince === null || daysSince >= STALE_BACKUP_DAYS;
+          return (
+            <div
+              className={`rounded-2xl p-4 space-y-3 ${
+                stale ? "bg-clay-50 border border-clay-200" : "bg-white"
+              }`}
+            >
+              <div>
+                <p
+                  className={`text-sm font-medium flex items-center gap-1.5 ${
+                    stale ? "text-clay-700" : "text-stone-700"
+                  }`}
+                >
+                  {stale ? <AlertTriangle size={14} /> : null}
+                  Your data
+                </p>
+                <p className={`text-xs mt-0.5 ${stale ? "text-clay-700" : "text-stone-400"}`}>
+                  {daysSince === null
+                    ? "Never backed up. Everything in Racks lives only on this device, there's no server copy."
+                    : daysSince === 0
+                    ? "Backed up today."
+                    : `Last backed up ${daysSince} day${daysSince === 1 ? "" : "s"} ago.`}
+                </p>
+                <p className="text-xs text-clay-700 mt-2 font-medium">
+                  Using &ldquo;Add to Home Screen&rdquo; on iOS? Deleting that icon can
+                  permanently wipe this data, even if you add a new one pointing to
+                  the same page. Export a backup before removing or replacing a
+                  Home Screen icon, not after.
+                </p>
+              </div>
 
-          <button
-            onClick={handleExport}
-            disabled={busy}
-            className="w-full rounded-xl bg-emerald-600 text-cream py-2.5 text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-60"
-          >
-            {busy ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
-            Download backup
-          </button>
+              <button
+                onClick={handleExport}
+                disabled={busy}
+                className="w-full rounded-xl bg-emerald-600 text-cream py-2.5 text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-60"
+              >
+                {busy ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+                Download backup
+              </button>
 
-          <button
-            onClick={() => fileRef.current?.click()}
-            disabled={busy}
-            className="w-full rounded-xl border border-clay-200 text-stone-600 py-2.5 text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-60"
-          >
-            {busy ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
-            Restore from backup
-          </button>
-        </div>
+              <button
+                onClick={() => fileRef.current?.click()}
+                disabled={busy}
+                className="w-full rounded-xl border border-clay-200 text-stone-600 py-2.5 text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-60"
+              >
+                {busy ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+                Restore from backup
+              </button>
+            </div>
+          );
+        })()}
 
         <div className="bg-white rounded-2xl p-4 space-y-3">
           <div>

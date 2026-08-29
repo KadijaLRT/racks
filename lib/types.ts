@@ -859,6 +859,11 @@ export interface AppSettings {
     pattern?: string;
     fabric?: string;
   };
+  // Drives the backup-reminder banner. Storage on this device (or,
+  // critically on iOS, tied to the specific Home Screen icon instance)
+  // is the only copy of this data — there's no server. Set every time
+  // an export actually succeeds.
+  lastBackupAt?: number;
 }
 
 export interface UpcomingPlan {

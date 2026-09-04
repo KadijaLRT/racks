@@ -122,6 +122,7 @@ export default function LooksPage() {
   const [savedLooks, setSavedLooks] = useState<GeneratedLook[]>([]);
   const [lookbookOpen, setLookbookOpen] = useState(false);
   const [collectionFilter, setCollectionFilter] = useState("all");
+  const [dataLoaded, setDataLoaded] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -142,6 +143,7 @@ export default function LooksPage() {
       setStyleDescription(style?.description || "");
       setStyleKeywords((inspirations || []).flatMap((i) => i.keywords || []));
       setSavedLooks(looks || []);
+      setDataLoaded(true);
     });
   }, []);
 
@@ -223,6 +225,12 @@ export default function LooksPage() {
   // pieces, respect pinned favorites, require a coherent combo) as
   // pure local selection instead.
   function buildWithoutAI() {
+    // The shake gesture calls this directly, bypassing the button's
+    // disabled state, so this needs its own guard against firing
+    // before the closet has actually finished loading (which would
+    // otherwise show a misleading "not enough items" error to someone
+    // who has plenty, just hasn't had them load yet).
+    if (!dataLoaded) return;
     setError("");
     setSavedMessage("");
 
@@ -451,6 +459,7 @@ export default function LooksPage() {
       await incrementTimesWorn(result.itemIds);
     }
     setSavedLooks((prev) => [saved, ...prev]);
+    setError("");
     setSavedMessage(markWorn ? "Marked as worn today." : "Saved to your favorites.");
   }
 
@@ -586,20 +595,20 @@ export default function LooksPage() {
 
           <button
             onClick={() => generate()}
-            disabled={loading}
+            disabled={loading || !dataLoaded}
             className="w-full rounded-xl bg-emerald-600 text-cream py-3 text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-60"
           >
-            {loading ? (
+            {loading || !dataLoaded ? (
               <Loader2 size={16} className="animate-spin" />
             ) : (
               <Sparkles size={16} />
             )}
-            {loading ? "Styling your look..." : "Generate a look"}
+            {loading ? "Styling your look..." : !dataLoaded ? "Loading your closet..." : "Generate a look"}
           </button>
 
           <button
             onClick={buildWithoutAI}
-            disabled={loading}
+            disabled={loading || !dataLoaded}
             className="w-full rounded-xl border border-clay-200 text-stone-600 py-2.5 text-xs font-medium disabled:opacity-60"
           >
             Build without AI
@@ -607,7 +616,8 @@ export default function LooksPage() {
 
           <button
             onClick={openManualBuild}
-            className="w-full rounded-xl border border-clay-200 text-stone-600 py-2.5 text-xs font-medium"
+            disabled={!dataLoaded}
+            className="w-full rounded-xl border border-clay-200 text-stone-600 py-2.5 text-xs font-medium disabled:opacity-60"
           >
             Build it myself
           </button>

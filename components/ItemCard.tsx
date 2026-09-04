@@ -33,6 +33,10 @@ export default function ItemCard({ item, onSelect, selectMode, isSelected }: Ite
   return (
     <button
       onClick={() => onSelect(item)}
+      aria-label={
+        selectMode ? (isSelected ? `Deselect ${name}` : `Select ${name}`) : `View ${name}`
+      }
+      aria-pressed={selectMode ? isSelected : undefined}
       className={`relative aspect-[3/4] w-full rounded-2xl overflow-hidden bg-cream-100 text-left group ${
         selectMode && !isSelected ? "opacity-60" : ""
       }`}

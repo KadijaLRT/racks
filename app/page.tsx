@@ -9,8 +9,7 @@ import UpcomingPlans from "@/components/home/UpcomingPlans";
 import { closetStore } from "@/lib/storage";
 import type { ClosetItem } from "@/lib/types";
 
-function greeting(): string {
-  const hour = new Date().getHours();
+function greetingForHour(hour: number): string {
   if (hour < 12) return "Good morning";
   if (hour < 18) return "Good afternoon";
   return "Good evening";
@@ -19,8 +18,24 @@ function greeting(): string {
 export default function HomePage() {
   const [items, setItems] = useState<ClosetItem[]>([]);
   const [loaded, setLoaded] = useState(false);
+  // Computed client-side only, after mount, rather than calling
+  // new Date() directly during render: this component's initial HTML
+  // is still server-rendered, and the server's clock/timezone won't
+  // generally match the person's actual local time, so evaluating the
+  // greeting inline risks a real mismatch between what the server sent
+  // and what the client immediately recomputes on hydration. A neutral
+  // greeting for that first paint avoids it entirely.
+  const [greeting, setGreeting] = useState("Hello");
 
   useEffect(() => {
+    // Legitimate one-time exception to the setState-in-effect rule,
+    // same reasoning as the shake-gesture feature detection elsewhere
+    // in this app: this reads the client's actual clock, which can't
+    // be computed during render without risking a mismatch against
+    // whatever the server's clock said, and it only ever runs once on
+    // mount, not a cascading update loop.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setGreeting(greetingForHour(new Date().getHours()));
     closetStore.getAll().then((all) => {
       setItems(all || []);
       setLoaded(true);
@@ -34,7 +49,7 @@ export default function HomePage() {
       <div className="max-w-md mx-auto px-4 pt-6 space-y-5">
         <div>
           <h1 className="text-xl font-semibold text-stone-800">
-            {greeting()}
+            {greeting}
           </h1>
           <p className="text-sm text-stone-500 mt-0.5">
             Here&apos;s what&apos;s happening with your closet.
@@ -45,11 +60,16 @@ export default function HomePage() {
 
         <UpcomingPlans />
 
-        <section className="px-0">
-          {loaded && closetCount === 0 ? (
+        <section>
+          {!loaded ? (
+            <div className="bg-white rounded-2xl px-4 py-4 animate-pulse">
+              <div className="h-4 w-32 bg-cream-100 rounded" />
+              <div className="h-3 w-40 bg-cream-100 rounded mt-2" />
+            </div>
+          ) : closetCount === 0 ? (
             <Link
               href="/closet"
-              className="flex items-center gap-3 bg-white rounded-2xl px-4 py-4 mx-4"
+              className="flex items-center gap-3 bg-white rounded-2xl px-4 py-4"
             >
               <div className="w-11 h-11 rounded-xl bg-emerald-100 flex items-center justify-center shrink-0">
                 <Shirt size={20} className="text-emerald-700" />
@@ -64,7 +84,7 @@ export default function HomePage() {
               </div>
             </Link>
           ) : (
-            <div className="mx-4 flex items-center justify-between bg-white rounded-2xl px-4 py-4">
+            <div className="flex items-center justify-between bg-white rounded-2xl px-4 py-4">
               <div>
                 <p className="text-sm font-medium text-stone-700">
                   {closetCount} {closetCount === 1 ? "item" : "items"} in your

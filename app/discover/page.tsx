@@ -6,7 +6,7 @@ import {
   BarChart3,
   Wand2,
   Luggage,
-  User,
+  Recycle,
   ChevronRight,
 } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
@@ -22,7 +22,7 @@ const CARDS = [
     href: "/pack",
     icon: Luggage,
     title: "Pack a trip",
-    blurb: "One description, a full packing list and outfits.",
+    blurb: "Set the day count, get a packing list and outfits from your closet.",
   },
   {
     href: "/manifest",
@@ -50,7 +50,7 @@ const CARDS = [
   },
   {
     href: "/cleanup",
-    icon: User,
+    icon: Recycle,
     title: "Cleanup pass",
     blurb: "Get suggestions for what to keep, donate, sell, or store.",
   },

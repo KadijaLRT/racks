@@ -87,7 +87,7 @@ export default function NudgesList({ items }: { items: ClosetItem[] | undefined 
   if (visible.length === 0) return null;
 
   return (
-    <section className="px-4">
+    <section>
       {visible.map((n) => (
         <div
           key={n.id}

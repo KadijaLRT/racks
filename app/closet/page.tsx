@@ -337,6 +337,19 @@ export default function ClosetPage() {
     setSelectedIds(new Set());
   }
 
+  // Closing without applying (backdrop tap, X button) still needs to
+  // clear whatever was picked, otherwise a color chosen but never
+  // applied would still show as selected the next time the sheet
+  // opens, for a completely different set of items.
+  function closeBatchSheet() {
+    setBatchSheetOpen(false);
+    setBatchCollections([]);
+    setBatchColor("");
+    setBatchPattern("");
+    setBatchFabric("");
+    setBatchLaundryStatus("");
+  }
+
   // Quick-Tap Preset Inheritance: apply a batch of tags/collections to
   // every selected item in one action, entirely local, zero AI. Only
   // the fields actually filled in the batch sheet get applied; a color
@@ -372,7 +385,7 @@ export default function ClosetPage() {
       );
       const updatedById = new Map(updated.map((i) => [i.id, i]));
       setItems((prev) => (prev || []).map((i) => updatedById.get(i.id) || i));
-      setBatchSheetOpen(false);
+      closeBatchSheet();
       exitSelectMode();
       showAddedToast(`Updated ${updated.length} item${updated.length === 1 ? "" : "s"}`);
     } finally {
@@ -579,9 +592,15 @@ export default function ClosetPage() {
             </button>
             <button
               onClick={() => setDefaultsSheetOpen(true)}
-              className="text-xs text-stone-500 font-medium"
+              className="text-xs text-stone-500 font-medium relative"
             >
               Defaults
+              {Object.keys(defaultUploadTags).length > 0 ? (
+                <span
+                  className="absolute -top-1 -right-1.5 w-1.5 h-1.5 rounded-full bg-emerald-600"
+                  aria-label="Defaults are active"
+                />
+              ) : null}
             </button>
           </div>
         </div>
@@ -821,7 +840,16 @@ export default function ClosetPage() {
           );
         })()}
 
-        {loaded && filteredItems.length === 0 ? (
+        {!loaded ? (
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            {[...Array(6)].map((_, i) => (
+              <div
+                key={i}
+                className="aspect-[3/4] rounded-2xl bg-white animate-pulse"
+              />
+            ))}
+          </div>
+        ) : filteredItems.length === 0 ? (
           <div className="text-center py-16 px-6">
             <p className="text-sm text-stone-500">
               {(items || []).length === 0
@@ -868,23 +896,32 @@ export default function ClosetPage() {
         )}
       </div>
 
-      <button
-        onClick={() => setAddPickerOpen(true)}
-        disabled={uploading}
-        className="fixed bottom-24 right-5 z-30 w-14 h-14 rounded-full bg-emerald-600 text-cream flex items-center justify-center shadow-lg active:scale-95 transition-transform disabled:opacity-60"
-        aria-label="Add item"
-      >
-        {uploading ? (
-          <Loader2 size={22} className="animate-spin" />
-        ) : (
-          <Plus size={24} />
-        )}
-      </button>
+      {!selectMode ? (
+        <button
+          onClick={() => setAddPickerOpen(true)}
+          disabled={uploading}
+          className="fixed bottom-24 right-5 z-30 w-14 h-14 rounded-full bg-emerald-600 text-cream flex items-center justify-center shadow-lg active:scale-95 transition-transform disabled:opacity-60"
+          aria-label="Add item"
+        >
+          {uploading ? (
+            <Loader2 size={22} className="animate-spin" />
+          ) : (
+            <Plus size={24} />
+          )}
+        </button>
+      ) : null}
 
       {addedToast ? (
         <div
           key={addedToast.key}
-          className={`fixed bottom-24 left-1/2 z-30 bg-stone-800/95 text-cream shadow-lg animate-toast-fade pointer-events-none ${
+          className={`fixed left-1/2 z-30 bg-stone-800/95 text-cream shadow-lg animate-toast-fade pointer-events-none ${
+            // Shifted up when the select-mode action bar is also on
+            // screen (bottom-20), so a toast fired from an unrelated
+            // action (e.g. "Mark all clean" from the dirty-items
+            // banner, which doesn't exit select mode) can't visually
+            // collide with it.
+            selectMode && selectedIds.size > 0 ? "bottom-36" : "bottom-24"
+          } ${
             addedToast.isError
               ? "max-w-[90%] w-80 rounded-2xl text-left text-xs px-4 py-3 leading-snug"
               : "max-w-[85%] rounded-full text-xs font-medium px-4 py-2"
@@ -1012,7 +1049,7 @@ export default function ClosetPage() {
       {batchSheetOpen ? (
         <div
           className="fixed inset-0 z-50 flex flex-col md:items-center md:justify-center bg-black/40"
-          onClick={() => setBatchSheetOpen(false)}
+          onClick={closeBatchSheet}
         >
           <div
             className="mt-auto md:mt-0 md:max-w-sm md:w-full bg-cream rounded-t-3xl md:rounded-3xl max-h-[80vh] flex flex-col pb-safe"
@@ -1023,7 +1060,7 @@ export default function ClosetPage() {
                 <h2 className="text-base font-medium text-stone-800">Apply to {selectedIds.size} items</h2>
                 <p className="text-xs text-stone-400">Only the fields you set here get applied</p>
               </div>
-              <button onClick={() => setBatchSheetOpen(false)} aria-label="Close">
+              <button onClick={closeBatchSheet} aria-label="Close">
                 <span className="text-stone-400 text-lg">&times;</span>
               </button>
             </div>

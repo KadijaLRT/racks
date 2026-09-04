@@ -86,7 +86,7 @@ export default function UpcomingPlans() {
   const upcoming = (plans || []).slice(0, 4);
 
   return (
-    <section className="px-4">
+    <section>
       <input
         ref={icsFileRef}
         type="file"
@@ -148,7 +148,11 @@ export default function UpcomingPlans() {
         </div>
       ) : null}
 
-      {loaded && upcoming.length === 0 ? (
+      {!loaded ? (
+        <div className="bg-white rounded-xl px-3 py-2 animate-pulse">
+          <div className="h-3.5 w-28 bg-cream-100 rounded" />
+        </div>
+      ) : upcoming.length === 0 ? (
         <p className="text-xs text-stone-400">
           Nothing on the calendar yet. Add a plan to get outfit reminders.
         </p>

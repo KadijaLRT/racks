@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Check } from "lucide-react";
+import BottomNav from "@/components/BottomNav";
 import { measurementsStore } from "@/lib/storage";
 import type { UserMeasurements } from "@/lib/types";
 
@@ -26,6 +27,7 @@ export default function MeasurementsPage() {
   const [values, setValues] = useState<Record<string, string>>({});
   const [notes, setNotes] = useState("");
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState("");
 
   useEffect(() => {
     measurementsStore.get().then((m) => {
@@ -45,13 +47,18 @@ export default function MeasurementsPage() {
       const v = (values[f.key] || "").trim();
       if (v) cleaned[f.key] = v;
     }
-    await measurementsStore.save({
-      ...cleaned,
-      notes: notes.trim() || undefined,
-      updatedAt: Date.now(),
-    } as UserMeasurements);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2200);
+    setSaveError("");
+    try {
+      await measurementsStore.save({
+        ...cleaned,
+        notes: notes.trim() || undefined,
+        updatedAt: Date.now(),
+      } as UserMeasurements);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2200);
+    } catch {
+      setSaveError("Couldn't save that, try again.");
+    }
   }
 
   return (
@@ -95,6 +102,10 @@ export default function MeasurementsPage() {
               />
             </div>
 
+            {saveError ? (
+              <p className="text-xs text-clay-700">{saveError}</p>
+            ) : null}
+
             <button
               onClick={handleSave}
               className="w-full rounded-xl bg-emerald-600 text-cream py-3 text-sm font-medium flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
@@ -108,8 +119,19 @@ export default function MeasurementsPage() {
               )}
             </button>
           </div>
-        ) : null}
+        ) : (
+          <div className="space-y-3 animate-pulse">
+            {FIELDS.map((f) => (
+              <div key={f.key}>
+                <div className="h-3 w-20 bg-cream-100 rounded mb-1.5" />
+                <div className="h-10 w-full bg-cream-100 rounded-xl" />
+              </div>
+            ))}
+          </div>
+        )}
       </div>
+
+      <BottomNav />
     </main>
   );
 }

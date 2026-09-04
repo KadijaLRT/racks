@@ -36,7 +36,7 @@ export default function ProfilePage() {
           <h1 className="text-xl font-semibold text-stone-800">Profile</h1>
         </div>
         <p className="text-xs text-stone-500 -mt-2">
-          Your sizing info and data settings.
+          Your style profile, sizing info, and data settings.
         </p>
 
         <div className="space-y-3">

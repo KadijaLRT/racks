@@ -27,6 +27,7 @@ export default function MeasurementsPage() {
   const [values, setValues] = useState<Record<string, string>>({});
   const [notes, setNotes] = useState("");
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
 
   useEffect(() => {
@@ -48,6 +49,7 @@ export default function MeasurementsPage() {
       if (v) cleaned[f.key] = v;
     }
     setSaveError("");
+    setSaving(true);
     try {
       await measurementsStore.save({
         ...cleaned,
@@ -58,6 +60,8 @@ export default function MeasurementsPage() {
       setTimeout(() => setSaved(false), 2200);
     } catch {
       setSaveError("Couldn't save that, try again.");
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -108,7 +112,8 @@ export default function MeasurementsPage() {
 
             <button
               onClick={handleSave}
-              className="w-full rounded-xl bg-emerald-600 text-cream py-3 text-sm font-medium flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
+              disabled={saving}
+              className="w-full rounded-xl bg-emerald-600 text-cream py-3 text-sm font-medium flex items-center justify-center gap-2 active:scale-[0.98] transition-transform disabled:opacity-60"
             >
               {saved ? (
                 <>

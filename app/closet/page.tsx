@@ -25,6 +25,7 @@ export default function ClosetPage() {
   const [search, setSearch] = useState("");
   const [pendingCategory, setPendingCategory] = useState<ItemCategory>("top");
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null);
   const [uploadError, setUploadError] = useState("");
   const [selected, setSelected] = useState<ClosetItem | null>(null);
   const [remixItem, setRemixItem] = useState<ClosetItem | null>(null);
@@ -231,61 +232,96 @@ export default function ClosetPage() {
   }, [filteredItems, filter, groupBy, browseMode]);
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
+    const files = Array.from(e.target.files || []);
     e.target.value = "";
-    if (!file) return;
+    if (files.length === 0) return;
 
     setAddPickerOpen(false);
     setUploading(true);
     setUploadError("");
-    try {
-      const dataUrl = await fileToResizedDataUrl(file);
-      if (!dataUrl) throw new Error("Couldn't read that photo, try another one.");
+    setUploadProgress({ done: 0, total: files.length });
 
-      // Auto-tagging on upload was removed: every item now saves
-      // instantly with zero Groq calls, cutting AI usage at the single
-      // highest-volume point in the app (every photo added). What can
-      // be determined without AI still gets filled in automatically:
-      // Color is extracted directly from the photo's actual pixels
-      // (dominant sampled color, mapped to the nearest known color
-      // name), no vision model needed for something this mechanical.
-      // Falls back to no color tag at all if extraction fails, rather
-      // than guessing.
-      const detectedColor = await extractDominantColorTag(dataUrl);
+    // Processes every selected photo as its own item, entirely
+    // locally (no AI, no rate limit to pace around), so this scales
+    // to a whole camera roll selection at once instead of requiring
+    // the single-photo flow repeated hundreds of times. Runs
+    // concurrently in small batches rather than one giant Promise.all,
+    // since IndexedDB writes and canvas-based color extraction for
+    // hundreds of images at once could otherwise contend for the main
+    // thread and make the browser feel like it's hung.
+    const BATCH_SIZE = 6;
+    const newItems: ClosetItem[] = [];
+    let failedCount = 0;
 
-      // Quick-Tap Preset Inheritance applied at the moment of upload,
-      // not just after the fact: whatever default template is set
-      // gets merged in automatically, entirely locally. The actual
-      // photo-based color detection wins over a generic default color
-      // when both would apply, since it's the more accurate signal.
-      const mergedTags: Record<string, string> = { ...(defaultUploadTags.pattern ? { pattern: defaultUploadTags.pattern } : {}), ...(defaultUploadTags.fabric ? { fabric: defaultUploadTags.fabric } : {}) };
-      if (detectedColor) {
-        mergedTags.color = detectedColor;
-      } else if (defaultUploadTags.color) {
-        mergedTags.color = defaultUploadTags.color;
-      }
+    for (let i = 0; i < files.length; i += BATCH_SIZE) {
+      const batch = files.slice(i, i + BATCH_SIZE);
+      const results = await Promise.all(
+        batch.map(async (file) => {
+          try {
+            const dataUrl = await fileToResizedDataUrl(file);
+            if (!dataUrl) return null;
 
-      const saved = await closetStore.create({
-        category: pendingCategory,
-        subcategory: undefined,
-        image: dataUrl,
-        name: "Untitled item",
-        tags: mergedTags,
-        collections:
-          defaultUploadTags.collections && defaultUploadTags.collections.length > 0
-            ? [...defaultUploadTags.collections]
-            : undefined,
-        laundryStatus: "clean",
-        timesWorn: 0,
-      });
-      setItems((prev) => [saved, ...(prev || [])]);
-      showAddedToast(`Added \u201c${saved?.name || "Untitled item"}\u201d`);
-    } catch (err) {
-      setUploadError(
-        err instanceof Error ? err.message : "That photo couldn't be added."
+            // Auto-tagging on upload was removed: every item saves
+            // instantly with zero Groq calls. What can be determined
+            // without AI still gets filled in automatically: Color is
+            // extracted directly from the photo's actual pixels, no
+            // vision model needed for something this mechanical.
+            const detectedColor = await extractDominantColorTag(dataUrl);
+
+            // Quick-Tap Preset Inheritance applied at the moment of
+            // upload: whatever default template is set gets merged in
+            // automatically, entirely locally. Photo-based color
+            // detection wins over a generic default when both apply.
+            const mergedTags: Record<string, string> = {
+              ...(defaultUploadTags.pattern ? { pattern: defaultUploadTags.pattern } : {}),
+              ...(defaultUploadTags.fabric ? { fabric: defaultUploadTags.fabric } : {}),
+            };
+            if (detectedColor) {
+              mergedTags.color = detectedColor;
+            } else if (defaultUploadTags.color) {
+              mergedTags.color = defaultUploadTags.color;
+            }
+
+            return await closetStore.create({
+              category: pendingCategory,
+              subcategory: undefined,
+              image: dataUrl,
+              name: "Untitled item",
+              tags: mergedTags,
+              collections:
+                defaultUploadTags.collections && defaultUploadTags.collections.length > 0
+                  ? [...defaultUploadTags.collections]
+                  : undefined,
+              laundryStatus: "clean",
+              timesWorn: 0,
+            });
+          } catch {
+            return null;
+          }
+        })
       );
-    } finally {
-      setUploading(false);
+      const batchSuccesses = results.filter(Boolean) as ClosetItem[];
+      newItems.push(...batchSuccesses);
+      failedCount += results.length - batchSuccesses.length;
+      setUploadProgress({ done: Math.min(i + BATCH_SIZE, files.length), total: files.length });
+      // Surface items as they land rather than waiting for the whole
+      // selection to finish, so a large batch feels responsive instead
+      // of frozen until the very end.
+      if (batchSuccesses.length > 0) {
+        setItems((prev) => [...batchSuccesses, ...(prev || [])]);
+      }
+    }
+
+    setUploading(false);
+    setUploadProgress(null);
+    if (newItems.length > 0) {
+      showAddedToast(
+        `Added ${newItems.length} item${newItems.length === 1 ? "" : "s"}${
+          failedCount > 0 ? ` (${failedCount} couldn't be read)` : ""
+        }`
+      );
+    } else if (failedCount > 0) {
+      setUploadError("None of those photos could be added, try again.");
     }
   }
 
@@ -566,6 +602,7 @@ export default function ClosetPage() {
         ref={fileRef}
         type="file"
         accept="image/*"
+        multiple
         className="hidden"
         onChange={handleFile}
       />
@@ -909,6 +946,12 @@ export default function ClosetPage() {
             <Plus size={24} />
           )}
         </button>
+      ) : null}
+
+      {uploadProgress ? (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-30 bg-stone-800/95 text-cream rounded-full px-4 py-2 text-xs font-medium shadow-lg pointer-events-none">
+          Adding {uploadProgress.done} of {uploadProgress.total}...
+        </div>
       ) : null}
 
       {addedToast ? (

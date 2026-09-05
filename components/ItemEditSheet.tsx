@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { X, Pin, PinOff, Trash2, Plus, Shuffle, Camera, Loader2, Sparkles, ChevronDown, Search } from "lucide-react";
 import type { ClosetItem, ItemCategory } from "@/lib/types";
 import { buildLocalItemName } from "@/lib/localNaming";
-import { JEAN_CUT_OPTIONS, RISE_HEIGHT_OPTIONS, SKIRT_LENGTH_OPTIONS, SHORTS_LENGTH_OPTIONS, NECKLINE_OPTIONS, TOP_SILHOUETTE_OPTIONS, DRESS_SILHOUETTE_OPTIONS, SLEEVE_LENGTH_OPTIONS, SLEEVE_OPTIONS, BACK_STYLE_OPTIONS, SUBCATEGORY_SUGGESTIONS, SUBCATEGORY_GROUPS, COLLECTION_OPTIONS, COLOR_OPTIONS, PATTERN_OPTIONS, FABRIC_OPTIONS, WASH_OPTIONS, OUTERWEAR_CLOSURE_OPTIONS, OUTERWEAR_LENGTH_OPTIONS, SHOE_HEEL_OPTIONS, SHOE_TOE_OPTIONS, SHOE_MATERIAL_OPTIONS, accessoryMaterialOptionsForSubcategory, JEWELRY_TYPE_OPTIONS, EARRING_TYPE_OPTIONS, BAG_SIZE_OPTIONS, HAT_TYPE_OPTIONS, MAKEUP_FINISH_OPTIONS, makeupTypeOptionsForSubcategory, makeupShadeOptionsForType, makeupFinishAppliesToTypes, KNIT_TYPE_OPTIONS, HOOD_STYLE_OPTIONS, HOOD_POCKET_OPTIONS, GARMENT_FIT_OPTIONS, SWIMSUIT_TYPE_OPTIONS, SWIMSUIT_TOP_STYLE_OPTIONS, SWIMSUIT_BOTTOM_STYLE_OPTIONS } from "@/lib/types";
+import { JEAN_CUT_OPTIONS, RISE_HEIGHT_OPTIONS, SKIRT_LENGTH_OPTIONS, SHORTS_LENGTH_OPTIONS, NECKLINE_OPTIONS, TOP_SILHOUETTE_OPTIONS, DRESS_SILHOUETTE_OPTIONS, SLEEVE_LENGTH_OPTIONS, SLEEVE_OPTIONS, BACK_STYLE_OPTIONS, SUBCATEGORY_SUGGESTIONS, SUBCATEGORY_GROUPS, COLLECTION_OPTIONS, COLOR_OPTIONS, PATTERN_OPTIONS, FABRIC_OPTIONS, WASH_OPTIONS, OUTERWEAR_CLOSURE_OPTIONS, OUTERWEAR_LENGTH_OPTIONS, SHOE_HEEL_OPTIONS, SHOE_TOE_OPTIONS, SHOE_MATERIAL_OPTIONS, accessoryMaterialOptionsForSubcategory, JEWELRY_TYPE_OPTIONS, EARRING_TYPE_OPTIONS, BAG_SIZE_OPTIONS, HAT_TYPE_OPTIONS, MAKEUP_FINISH_OPTIONS, makeupTypeOptionsForSubcategory, makeupShadeOptionsForType, makeupFinishAppliesToTypes, KNIT_TYPE_OPTIONS, HOOD_STYLE_OPTIONS, HOOD_POCKET_OPTIONS, GARMENT_FIT_OPTIONS, SWIMSUIT_TYPE_OPTIONS, SWIMSUIT_TOP_STYLE_OPTIONS, SWIMSUIT_BOTTOM_STYLE_OPTIONS, AESTHETIC_OPTIONS, EXPOSURE_OPTIONS } from "@/lib/types";
 import { CATEGORIES, categoryLabel } from "@/lib/categories";
 import { fileToResizedDataUrl, resizeDataUrlForAI } from "@/lib/image";
 import { extractDominantColorTag } from "@/lib/dominantColor";
@@ -1144,6 +1144,27 @@ export default function ItemEditSheet({
                       {category !== "shoes" && category !== "accessory"
                         ? renderAttributeRow("Fabric", "fabric", FABRIC_OPTIONS)
                         : null}
+                      {category === "top" ||
+                      category === "bottom" ||
+                      category === "dress" ||
+                      category === "set" ||
+                      category === "outerwear"
+                        ? // Uses its own "volume" tag key, deliberately
+                          // separate from the existing "fit" key (which
+                          // already means jean cut for Bottoms and a
+                          // sweatsuit-specific fit for loungewear) so
+                          // adding this universally doesn't silently
+                          // overwrite either of those.
+                          renderAttributeRow("Fit / Volume", "volume", GARMENT_FIT_OPTIONS)
+                        : null}
+                      {category === "top" ||
+                      category === "bottom" ||
+                      category === "dress" ||
+                      category === "set" ||
+                      category === "swimwear"
+                        ? renderAttributeRow("Exposure Level", "exposure", EXPOSURE_OPTIONS)
+                        : null}
+                      {renderAttributeRow("Aesthetic", "aesthetic", AESTHETIC_OPTIONS)}
                     </>
                   ) : null}
                 </div>

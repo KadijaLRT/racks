@@ -284,6 +284,22 @@ export const FABRIC_OPTIONS = [
 
 export const GARMENT_FIT_OPTIONS = ["Relaxed", "Fitted", "Oversized", "Cropped"];
 
+// The Master Style Algorithm's three new dimensions. Aesthetic is
+// multi-select (an item can be both Streetwear and Sexy); Exposure is
+// single-select and only meaningful for garments that actually cover
+// or reveal skin (not shoes, bags, jewelry).
+export const AESTHETIC_OPTIONS = [
+  "Streetwear",
+  "Elegant",
+  "Business Casual",
+  "Boho Chic",
+  "Comfort",
+  "Sexy",
+  "Girly",
+];
+
+export const EXPOSURE_OPTIONS = ["High Skin", "Medium Skin", "Low Skin"];
+
 // Shoe-specific material, distinct from ACCESSORY_MATERIAL_OPTIONS
 // since shoe construction has its own common vocabulary (patent,
 // rubber sole material, etc.) not shared with bags/jewelry.

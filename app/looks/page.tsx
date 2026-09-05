@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Heart, Check, Sparkles, HelpCircle, BookMarked, Trash2, X } from "lucide-react";
+import { Loader2, Heart, Check, Sparkles, HelpCircle, BookMarked, Trash2, X, ChevronDown } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
 import OutfitItemStrip, { groupByPhase } from "@/components/OutfitItemStrip";
 import HairstylePreview from "@/components/HairstylePreview";
@@ -98,6 +98,9 @@ export default function LooksPage() {
     category: ItemCategory;
   } | null>(null);
   const [stepByStep, setStepByStep] = useState(false);
+  const [refineOpen, setRefineOpen] = useState(false);
+  const [moreOptionsOpen, setMoreOptionsOpen] = useState(false);
+  const [inputOpen, setInputOpen] = useState(true);
   const [shakeEnabled, setShakeEnabled] = useState(false);
   const [shakeSupported, setShakeSupported] = useState(false);
   useEffect(() => {
@@ -205,6 +208,7 @@ export default function LooksPage() {
         throw new Error("Couldn't put together a look from what's in your closet yet.");
       }
       setResult(data);
+      setInputOpen(false);
       setRevealedPhaseCount(null);
       setRefinement("");
       setWhyNotOpen(false);
@@ -283,6 +287,7 @@ export default function LooksPage() {
       strengths: [],
       weaknesses: [],
     });
+    setInputOpen(false);
     // Step-by-step reveals one layer (base, then outer, then shoes,
     // then accessories) at a time instead of the whole outfit at once,
     // since throwing a full 4-5 piece look at someone simultaneously
@@ -333,6 +338,7 @@ export default function LooksPage() {
       strengths: [],
       weaknesses: [],
     });
+    setInputOpen(false);
     setRevealedPhaseCount(null);
     setError("");
     setSavedMessage("");
@@ -507,6 +513,24 @@ export default function LooksPage() {
         </div>
 
         <div className="bg-white rounded-2xl p-4 space-y-3">
+          {result ? (
+            <button
+              type="button"
+              onClick={() => setInputOpen((o) => !o)}
+              className="w-full flex items-center justify-between"
+            >
+              <span className="text-xs font-medium text-stone-600">
+                {inputOpen ? "Hide inputs" : "Edit inputs"}
+              </span>
+              <ChevronDown
+                size={14}
+                className={`text-stone-400 transition-transform ${inputOpen ? "rotate-180" : ""}`}
+              />
+            </button>
+          ) : null}
+
+          {inputOpen ? (
+            <>
           <input
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
@@ -526,71 +550,95 @@ export default function LooksPage() {
             ))}
           </div>
 
-          <div>
-            <p className="text-xs text-stone-500 mb-1.5">
-              Want to feel a certain way? (optional)
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {MOOD_CHIPS.map((m) => (
-                <button
-                  key={m}
-                  onClick={() => setMood((prev) => (prev === m ? "" : m))}
-                  className={`px-3 py-1 rounded-full text-xs ${
-                    mood === m
-                      ? "bg-emerald-600 text-cream"
-                      : "bg-cream-100 text-stone-500"
-                  }`}
-                >
-                  {m}
-                </button>
-              ))}
-            </div>
-          </div>
+          <div className="rounded-xl border border-clay-100 overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setRefineOpen((o) => !o)}
+              className="w-full flex items-center justify-between px-3 py-2 bg-cream-50"
+            >
+              <span className="text-xs font-medium text-stone-600">
+                Refine your look (optional)
+                {!refineOpen && (mood || context.length > 0 || energy) ? (
+                  <span className="ml-1.5 font-normal text-emerald-700">
+                    {[mood, ...context, energy].filter(Boolean).length} active
+                  </span>
+                ) : null}
+              </span>
+              <ChevronDown
+                size={14}
+                className={`text-stone-400 transition-transform ${refineOpen ? "rotate-180" : ""}`}
+              />
+            </button>
+            {refineOpen ? (
+              <div className="p-3 space-y-3 bg-white">
+                <div>
+                  <p className="text-xs text-stone-500 mb-1.5">
+                    Want to feel a certain way?
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {MOOD_CHIPS.map((m) => (
+                      <button
+                        key={m}
+                        onClick={() => setMood((prev) => (prev === m ? "" : m))}
+                        className={`px-3 py-1 rounded-full text-xs ${
+                          mood === m
+                            ? "bg-emerald-600 text-cream"
+                            : "bg-cream-100 text-stone-500"
+                        }`}
+                      >
+                        {m}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
-          <div>
-            <p className="text-xs text-stone-500 mb-1.5">
-              Anything practical to plan around? (optional)
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {CONTEXT_CHIPS.map((c) => (
-                <button
-                  key={c}
-                  onClick={() =>
-                    setContext((prev) =>
-                      prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]
-                    )
-                  }
-                  className={`px-3 py-1 rounded-full text-xs ${
-                    context.includes(c)
-                      ? "bg-stone-700 text-cream"
-                      : "bg-cream-100 text-stone-500"
-                  }`}
-                >
-                  {c}
-                </button>
-              ))}
-            </div>
-          </div>
+                <div>
+                  <p className="text-xs text-stone-500 mb-1.5">
+                    Anything practical to plan around?
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {CONTEXT_CHIPS.map((c) => (
+                      <button
+                        key={c}
+                        onClick={() =>
+                          setContext((prev) =>
+                            prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]
+                          )
+                        }
+                        className={`px-3 py-1 rounded-full text-xs ${
+                          context.includes(c)
+                            ? "bg-stone-700 text-cream"
+                            : "bg-cream-100 text-stone-500"
+                        }`}
+                      >
+                        {c}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
-          <div>
-            <p className="text-xs text-stone-500 mb-1.5">
-              How&apos;s your energy today? (optional)
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {ENERGY_CHIPS.map((e) => (
-                <button
-                  key={e}
-                  onClick={() => setEnergy((prev) => (prev === e ? "" : e))}
-                  className={`px-3 py-1 rounded-full text-xs ${
-                    energy === e
-                      ? "bg-emerald-700 text-cream"
-                      : "bg-cream-100 text-stone-500"
-                  }`}
-                >
-                  {e}
-                </button>
-              ))}
-            </div>
+                <div>
+                  <p className="text-xs text-stone-500 mb-1.5">
+                    How&apos;s your energy today?
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {ENERGY_CHIPS.map((e) => (
+                      <button
+                        key={e}
+                        onClick={() => setEnergy((prev) => (prev === e ? "" : e))}
+                        className={`px-3 py-1 rounded-full text-xs ${
+                          energy === e
+                            ? "bg-emerald-700 text-cream"
+                            : "bg-cream-100 text-stone-500"
+                        }`}
+                      >
+                        {e}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </div>
 
           <button
@@ -622,26 +670,50 @@ export default function LooksPage() {
             Build it myself
           </button>
 
-          <label className="flex items-center gap-2 text-xs text-stone-500 px-1">
-            <input
-              type="checkbox"
-              checked={stepByStep}
-              onChange={(e) => setStepByStep(e.target.checked)}
-              className="rounded"
-            />
-            Reveal one layer at a time
-          </label>
-
-          {shakeSupported ? (
-            <label className="flex items-center gap-2 text-xs text-stone-500 px-1">
-              <input
-                type="checkbox"
-                checked={shakeEnabled}
-                onChange={(e) => (e.target.checked ? enableShake() : setShakeEnabled(false))}
-                className="rounded"
+          <div className="rounded-xl border border-clay-100 overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setMoreOptionsOpen((o) => !o)}
+              className="w-full flex items-center justify-between px-3 py-2 bg-cream-50"
+            >
+              <span className="text-xs font-medium text-stone-600">
+                More options
+                {!moreOptionsOpen && (stepByStep || shakeEnabled) ? (
+                  <span className="ml-1.5 font-normal text-emerald-700">on</span>
+                ) : null}
+              </span>
+              <ChevronDown
+                size={14}
+                className={`text-stone-400 transition-transform ${moreOptionsOpen ? "rotate-180" : ""}`}
               />
-              Shake to shuffle (no AI)
-            </label>
+            </button>
+            {moreOptionsOpen ? (
+              <div className="p-3 space-y-2 bg-white">
+                <label className="flex items-center gap-2 text-xs text-stone-500">
+                  <input
+                    type="checkbox"
+                    checked={stepByStep}
+                    onChange={(e) => setStepByStep(e.target.checked)}
+                    className="rounded"
+                  />
+                  Reveal one layer at a time
+                </label>
+
+                {shakeSupported ? (
+                  <label className="flex items-center gap-2 text-xs text-stone-500">
+                    <input
+                      type="checkbox"
+                      checked={shakeEnabled}
+                      onChange={(e) => (e.target.checked ? enableShake() : setShakeEnabled(false))}
+                      className="rounded"
+                    />
+                    Shake to shuffle (no AI)
+                  </label>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+            </>
           ) : null}
         </div>
 

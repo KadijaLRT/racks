@@ -9,6 +9,14 @@
 
 import type { ClosetItem } from "./types";
 import { colorsOf, isColorCompatibleWithAll } from "./colorCompatibility";
+import {
+  getExposure,
+  getVolume,
+  getAesthetics,
+  fitsAestheticBudget,
+  countNonNeutralColors,
+  isNeutralColor,
+} from "./styleAlgorithm";
 
 export interface LocalLookResult {
   itemIds: string[];
@@ -414,27 +422,72 @@ export function buildLocalLook(
   // filtered toward what actually goes with what's already chosen,
   // rather than each category being picked in isolation.
   let establishedColors: string[] = [];
+  // The Master Style Algorithm's running state: which aesthetics are
+  // in play (capped at 2 total) and how many distinct non-neutral
+  // colors are already committed to (capped at 3).
+  let establishedAesthetics: string[] = [];
 
   function addPick(item: ClosetItem | null) {
     if (!item) return;
     picked.push(item);
     descriptionParts.push(item.name);
     establishedColors = [...establishedColors, ...colorsOf(item.tags?.color)];
+    establishedAesthetics = [...new Set([...establishedAesthetics, ...getAesthetics(item)])];
+  }
+
+  // Combines the aesthetic budget (max 2 distinct aesthetics across
+  // the whole outfit) and the non-neutral color cap (max 3 distinct)
+  // into one filter, applied everywhere a pick happens. Both fall back
+  // gracefully to the unfiltered pool rather than ever returning zero
+  // candidates, same principle as every other constraint in this file.
+  function applyStyleBudget(candidates: ClosetItem[]): ClosetItem[] {
+    const nonNeutralCount = countNonNeutralColors(establishedColors);
+    const filtered = candidates.filter((c) => {
+      const aestheticsOk = fitsAestheticBudget(getAesthetics(c), establishedAesthetics);
+      if (!aestheticsOk) return false;
+      if (nonNeutralCount < 3) return true;
+      // Already at the cap: only neutrals or colors already in play
+      // don't push the count higher.
+      const itemColors = colorsOf(c.tags?.color);
+      return itemColors.every(
+        (ic) =>
+          isNeutralColor(ic) ||
+          establishedColors.some((ec) => ec.toLowerCase().trim() === ic.toLowerCase().trim())
+      );
+    });
+    return filtered.length > 0 ? filtered : candidates;
   }
 
   const preferredColors = preferences?.colors || [];
 
   if (chosenBase === "dress") {
-    addPick(weightedPick(dresses, preferredColors));
+    addPick(weightedPick(applyStyleBudget(dresses), preferredColors));
   } else if (chosenBase === "set") {
-    addPick(weightedPick(sets, preferredColors));
+    addPick(weightedPick(applyStyleBudget(sets), preferredColors));
   } else {
     // Bottom picked first (usually the more color-neutral piece in
     // practice, e.g. denim/black trousers), then the top picked to be
     // color-compatible with it, rather than picking both blind.
-    const bottom = weightedPick(bottoms, preferredColors);
+    let bottom = weightedPick(applyStyleBudget(bottoms), preferredColors);
     addPick(bottom);
-    const top = pickColorCompatible(tops, establishedColors, preferredColors);
+    const top = pickColorCompatible(applyStyleBudget(tops), establishedColors, preferredColors);
+
+    // Exposure balance: if both pieces landed on High Skin (a crop top
+    // with a mini, say), that's the one combination the algorithm
+    // explicitly calls out as needing a fix, mirroring its own
+    // pick-then-correct approach rather than trying to predict this
+    // before either piece is chosen.
+    if (top && bottom && getExposure(top) === "High Skin" && getExposure(bottom) === "High Skin") {
+      const lowerExposureBottoms = bottoms.filter((b) => getExposure(b) !== "High Skin");
+      if (lowerExposureBottoms.length > 0) {
+        const replacement = weightedPick(applyStyleBudget(lowerExposureBottoms), preferredColors);
+        if (replacement) {
+          picked.splice(picked.indexOf(bottom), 1);
+          bottom = replacement;
+          addPick(bottom);
+        }
+      }
+    }
     addPick(top);
   }
 
@@ -457,14 +510,38 @@ export function buildLocalLook(
     });
     if (comfortable.length > 0) shoeCandidates = comfortable;
   }
-  addPick(pickColorCompatible(shoeCandidates.length > 0 ? shoeCandidates : shoes, establishedColors, preferredColors));
+  addPick(
+    pickColorCompatible(
+      applyStyleBudget(shoeCandidates.length > 0 ? shoeCandidates : shoes),
+      establishedColors,
+      preferredColors
+    )
+  );
+
+  // Volume balance: two pieces at the same volume extreme (both
+  // Fitted, or both Oversized) reads as either too tight or too
+  // shapeless without a third piece to break it up, so outerwear gets
+  // both a higher chance of appearing and a push toward the
+  // complementary volume when the base already landed at one extreme.
+  const baseVolumes = picked
+    .filter((p) => p.category !== "shoes" && p.category !== "accessory")
+    .map((p) => getVolume(p));
+  const needsVolumeBreak =
+    baseVolumes.length >= 2 &&
+    (baseVolumes.every((v) => v === "Fitted") || baseVolumes.every((v) => v === "Oversized"));
+  const complementaryVolume = baseVolumes[0] === "Oversized" ? "Fitted" : "Oversized";
 
   // Outerwear: skip entirely for the most casual band (level 1) unless
   // weather calls for it, a blazer over a sweatsuit is its own kind of
   // mismatch, but a coat over a sweatsuit for a chilly/rainy day isn't.
-  const outerwearChance = forceOuterwear ? 0.9 : 0.35;
+  const outerwearChance = forceOuterwear ? 0.9 : needsVolumeBreak ? 0.75 : 0.35;
   if ((band.max > 1 || forceOuterwear) && outerwear.length > 0 && Math.random() < outerwearChance) {
-    addPick(pickColorCompatible(outerwear, establishedColors, preferredColors));
+    let outerwearCandidates = applyStyleBudget(outerwear);
+    if (needsVolumeBreak) {
+      const balancing = outerwearCandidates.filter((o) => getVolume(o) === complementaryVolume);
+      if (balancing.length > 0) outerwearCandidates = balancing;
+    }
+    addPick(pickColorCompatible(outerwearCandidates, establishedColors, preferredColors));
   }
 
   // Accessories: coordinate both metal tone (gold shoe hardware, e.g.)
@@ -479,7 +556,7 @@ export function buildLocalLook(
           return tone === null || tone === establishedTone;
         })
       : accessories;
-    let pool = [...(toneFiltered.length > 0 ? toneFiltered : accessories)];
+    let pool = applyStyleBudget([...(toneFiltered.length > 0 ? toneFiltered : accessories)]);
 
     const accessoryCount = lowEnergy
       ? Math.random() < 0.5

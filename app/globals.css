@@ -17,6 +17,13 @@
 
 html,
 body {
+  /* This app is deliberately light-mode only (cream/white backgrounds,
+     dark text, hardcoded throughout, no dark: variants anywhere).
+     Without this, native form controls (select, input, scrollbars)
+     can pick up the OS's dark-mode styling independently of the rest
+     of the page on a device with system dark mode on, producing a
+     dark dropdown sitting inside a light card with poor contrast. */
+  color-scheme: light;
   background-color: var(--color-cream);
   color: #3a352f;
 }

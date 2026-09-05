@@ -901,4 +901,13 @@ export interface GeneratedLook {
   favorite: boolean;
   collection?: string;
   createdAt: number;
+
+}
+
+export interface DailyLook {
+  date: string;
+  itemIds: string[];
+  reasoning: string;
+  vibeLabel: string;
+  updatedAt: number;
 }

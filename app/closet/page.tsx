@@ -8,7 +8,7 @@ import ItemEditSheet from "@/components/ItemEditSheet";
 import RemixSheet from "@/components/RemixSheet";
 import BulkImportSheet from "@/components/BulkImportSheet";
 import { fileToResizedDataUrl, resizeDataUrlForAI } from "@/lib/image";
-import { extractDominantColorTag } from "@/lib/dominantColor";
+import { extractDominantColorTag, isLikelySolidColor } from "@/lib/dominantColor";
 import { computeHistoryTagSuggestions } from "@/lib/localTagHistory";
 import { closetStore, appSettingsStore } from "@/lib/storage";
 import type { ClosetItem, ItemCategory } from "@/lib/types";
@@ -545,18 +545,40 @@ export default function ClosetPage() {
     setRetagProgress({ done: 0, total: targets.length });
 
     let updatedCount = 0;
+    let subcategoryOnlyCount = 0;
     const updates: ClosetItem[] = [];
     for (let i = 0; i < targets.length; i++) {
       const target = targets[i];
-      const detectedColor = !target.tags?.color
-        ? await extractDominantColorTag(target.image)
-        : null;
-      const historySuggestions = computeHistoryTagSuggestions(target, items);
       const newTags = { ...(target.tags || {}) };
-      if (detectedColor) newTags.color = detectedColor;
-      for (const [k, v] of Object.entries(historySuggestions)) newTags[k] = v;
+      let changed = false;
 
-      if (Object.keys(newTags).length !== Object.keys(target.tags || {}).length) {
+      if (!target.tags?.color) {
+        const detectedColor = await extractDominantColorTag(target.image);
+        if (detectedColor) {
+          newTags.color = detectedColor;
+          changed = true;
+        }
+      }
+      if (!target.tags?.pattern) {
+        const solid = await isLikelySolidColor(target.image);
+        if (solid === true) {
+          newTags.pattern = "Solid";
+          changed = true;
+        }
+      }
+      if (target.subcategory?.trim()) {
+        const historySuggestions = computeHistoryTagSuggestions(target, items);
+        for (const [k, v] of Object.entries(historySuggestions)) {
+          newTags[k] = v;
+          changed = true;
+        }
+      } else if (!target.tags?.color && !target.tags?.pattern) {
+        // The only gap on this item is exactly the one thing pixel
+        // analysis can't determine: what kind of garment it is.
+        subcategoryOnlyCount += 1;
+      }
+
+      if (changed) {
         const updated = { ...target, tags: newTags };
         await closetStore.update(updated);
         updates.push(updated);
@@ -575,6 +597,10 @@ export default function ClosetPage() {
       retagged: updatedCount,
       stillFailed: targets.length - updatedCount,
       stoppedEarly: false,
+      reason:
+        subcategoryOnlyCount > 0
+          ? `${subcategoryOnlyCount} item${subcategoryOnlyCount === 1 ? "" : "s"} could only be fixed by picking a subcategory or using Retag with AI, color/pattern analysis can't tell what type of garment something is.`
+          : undefined,
     });
   }
 
@@ -792,6 +818,8 @@ export default function ClosetPage() {
                     <span className="block mt-0.5 text-clay-700">
                       Stopped early: {retagSummary.reason}
                     </span>
+                  ) : retagSummary.reason ? (
+                    <span className="block mt-0.5 text-stone-500">{retagSummary.reason}</span>
                   ) : retagSummary.stillFailed > 0 ? (
                     <span className="block mt-0.5 text-stone-500">
                       {retagSummary.stillFailed} still couldn&rsquo;t be tagged.

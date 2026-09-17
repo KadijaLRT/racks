@@ -7,7 +7,7 @@ import { buildLocalItemName } from "@/lib/localNaming";
 import { JEAN_CUT_OPTIONS, RISE_HEIGHT_OPTIONS, SKIRT_LENGTH_OPTIONS, SHORTS_LENGTH_OPTIONS, NECKLINE_OPTIONS, TOP_SILHOUETTE_OPTIONS, DRESS_SILHOUETTE_OPTIONS, SLEEVE_LENGTH_OPTIONS, SLEEVE_OPTIONS, BACK_STYLE_OPTIONS, SUBCATEGORY_SUGGESTIONS, SUBCATEGORY_GROUPS, COLLECTION_OPTIONS, COLOR_OPTIONS, PATTERN_OPTIONS, FABRIC_OPTIONS, WASH_OPTIONS, OUTERWEAR_CLOSURE_OPTIONS, OUTERWEAR_LENGTH_OPTIONS, SHOE_HEEL_OPTIONS, SHOE_TOE_OPTIONS, SHOE_MATERIAL_OPTIONS, accessoryMaterialOptionsForSubcategory, JEWELRY_TYPE_OPTIONS, EARRING_TYPE_OPTIONS, BAG_SIZE_OPTIONS, HAT_TYPE_OPTIONS, MAKEUP_FINISH_OPTIONS, makeupTypeOptionsForSubcategory, makeupShadeOptionsForType, makeupFinishAppliesToTypes, KNIT_TYPE_OPTIONS, HOOD_STYLE_OPTIONS, HOOD_POCKET_OPTIONS, GARMENT_FIT_OPTIONS, SWIMSUIT_TYPE_OPTIONS, SWIMSUIT_TOP_STYLE_OPTIONS, SWIMSUIT_BOTTOM_STYLE_OPTIONS, AESTHETIC_OPTIONS, EXPOSURE_OPTIONS } from "@/lib/types";
 import { CATEGORIES, categoryLabel } from "@/lib/categories";
 import { fileToResizedDataUrl, resizeDataUrlForAI } from "@/lib/image";
-import { extractDominantColorTag } from "@/lib/dominantColor";
+import { extractDominantColorTag, isLikelySolidColor } from "@/lib/dominantColor";
 import { computeHistoryTagSuggestions } from "@/lib/localTagHistory";
 import StylingTipList from "@/components/StylingTipList";
 import {
@@ -248,17 +248,48 @@ export default function ItemEditSheet({
   // fills in everything it honestly can without a Groq call.
   async function handleRetagWithoutAI() {
     if (!image) return;
-    const detected = await extractDominantColorTag(image);
-    setTags((prev) => {
-      const next = { ...(prev || {}) };
-      if (detected && !next.color) next.color = detected;
-      return next;
-    });
-    if (subcategory.trim() && allItems) {
-      const suggestions = computeHistorySuggestions();
-      if (Object.keys(suggestions).length > 0) {
-        setTags((prev) => ({ ...(prev || {}), ...suggestions }));
+    setRetagItemError("");
+    setRetagItemSuccess(false);
+    const filledIn: string[] = [];
+    const alreadyHadSubcategory = Boolean(subcategory.trim());
+
+    if (!tags?.color) {
+      const detected = await extractDominantColorTag(image);
+      if (detected) {
+        setTags((prev) => ({ ...(prev || {}), color: detected }));
+        filledIn.push("color");
       }
+    }
+    if (!tags?.pattern) {
+      const solid = await isLikelySolidColor(image);
+      if (solid === true) {
+        setTags((prev) => ({ ...(prev || {}), pattern: "Solid" }));
+        filledIn.push("pattern");
+      }
+    }
+    if (alreadyHadSubcategory && allItems) {
+      const suggestions = computeHistorySuggestions();
+      const newKeys = Object.keys(suggestions);
+      if (newKeys.length > 0) {
+        setTags((prev) => ({ ...(prev || {}), ...suggestions }));
+        filledIn.push(...newKeys);
+      }
+    }
+
+    if (filledIn.length > 0) {
+      setRetagItemSuccess(true);
+      setTimeout(() => setRetagItemSuccess(false), 3000);
+    } else {
+      // Being honest about scope here matters: color and pattern-
+      // solidity are the only things pixel analysis can actually
+      // determine. Subcategory (what type of garment this is) needs
+      // either AI or a person to look at it, silently doing nothing
+      // is exactly what made this feel broken.
+      setRetagItemError(
+        !alreadyHadSubcategory
+          ? "Nothing to fill in locally without a subcategory set. What kind of item this is can't be determined without AI, pick a subcategory above or use Retag with AI."
+          : "Nothing left to fill in, color, pattern, and history suggestions are already set."
+      );
     }
   }
 

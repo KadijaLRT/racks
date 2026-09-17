@@ -4,11 +4,21 @@ const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 
 // Groq's model lineup changes often and they deprecate models with only
 // email notice. If tagging/generation ever starts failing with a 404 or
-// "model_decommissioned" error, check https://console.groq.com/docs/models
-// and override via GROQ_VISION_MODEL / GROQ_TEXT_MODEL env vars rather
-// than editing this file.
+// "model_decommissioned"/"model_not_found" error, check
+// https://console.groq.com/docs/models (or GET
+// https://api.groq.com/openai/v1/models with your own API key, which
+// lists exactly what your account can currently access) and override
+// via GROQ_VISION_MODEL / GROQ_TEXT_MODEL env vars rather than editing
+// this file. qwen/qwen3.6-27b previously failed here with a live 404
+// ("does not exist or you do not have access to it") despite still
+// being listed in Groq's docs — it's marked "preview" there, and
+// preview-tier models can have inconsistent account/region access
+// even while still documented. qwen/qwen3.8-27b is presented as its
+// non-preview successor with the same shape (multimodal, tool use,
+// JSON mode), used here for that reason, but re-verify against the
+// models endpoint above if this one ever starts failing too.
 export const VISION_MODEL =
-  process.env.GROQ_VISION_MODEL || "qwen/qwen3.6-27b";
+  process.env.GROQ_VISION_MODEL || "qwen/qwen3.8-27b";
 export const TEXT_MODEL = process.env.GROQ_TEXT_MODEL || "openai/gpt-oss-120b";
 
 type ChatContent =

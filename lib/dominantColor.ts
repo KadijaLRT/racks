@@ -145,3 +145,66 @@ export function extractDominantColorTag(dataUrl: string): Promise<string | null>
     }
   });
 }
+
+/**
+ * Estimates whether a garment reads as one solid color rather than a
+ * pattern, from pixel variance (same sampling approach as dominant
+ * color extraction). Deliberately conservative: only returns true for
+ * genuinely low variance, since a false "Solid" would be a more
+ * annoying wrong tag than just leaving Pattern unset. Returns null if
+ * extraction fails or variance is ambiguous, rather than guess.
+ * Distinguishing which specific pattern it is (striped vs. floral vs.
+ * plaid) isn't something pixel variance can tell you, only that it
+ * probably isn't a single flat color.
+ */
+export function isLikelySolidColor(dataUrl: string): Promise<boolean | null> {
+  return new Promise((resolve) => {
+    try {
+      const img = new Image();
+      img.onerror = () => resolve(null);
+      img.onload = () => {
+        try {
+          const SAMPLE = 40;
+          const canvas = document.createElement("canvas");
+          canvas.width = SAMPLE;
+          canvas.height = SAMPLE;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) {
+            resolve(null);
+            return;
+          }
+          ctx.drawImage(img, 0, 0, SAMPLE, SAMPLE);
+          const { data } = ctx.getImageData(0, 0, SAMPLE, SAMPLE);
+
+          let sumR = 0, sumG = 0, sumB = 0, count = 0;
+          const samples: [number, number, number][] = [];
+          for (let i = 0; i < data.length; i += 4) {
+            const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
+            if (a < 200) continue;
+            if (r > 240 && g > 240 && b > 240) continue;
+            sumR += r;
+            sumG += g;
+            sumB += b;
+            count++;
+            samples.push([r, g, b]);
+          }
+          if (count < 10) {
+            resolve(null);
+            return;
+          }
+          const avg: [number, number, number] = [sumR / count, sumG / count, sumB / count];
+          const variance =
+            samples.reduce((sum, s) => sum + distanceSq(s, avg), 0) / samples.length;
+          // Well below the "Multicolor" threshold used elsewhere, since
+          // this needs to be confident, not just "not obviously patterned."
+          resolve(variance < 900);
+        } catch {
+          resolve(null);
+        }
+      };
+      img.src = dataUrl;
+    } catch {
+      resolve(null);
+    }
+  });
+}

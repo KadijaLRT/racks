@@ -20,10 +20,12 @@ import {
   measurementsStore,
   inspirationStore,
   lookStore,
+  userAffinitiesStore,
   incrementTimesWorn,
 } from "@/lib/storage";
-import type { ClosetItem, WigItem, HairProfile, ColorProfile, GeneratedLook, UserMeasurements, ItemCategory } from "@/lib/types";
+import type { ClosetItem, WigItem, HairProfile, ColorProfile, GeneratedLook, UserMeasurements, ItemCategory, UserAffinities } from "@/lib/types";
 import { buildLocalLook, estimateFormality } from "@/lib/localLookBuilder";
+import { emptyAffinities, boostAffinities, AFFINITY_DELTAS } from "@/lib/userAffinities";
 import { colorsOf, isColorCompatibleWithAll } from "@/lib/colorCompatibility";
 import { stripImagesForPrompt } from "@/lib/stripImagesForPrompt";
 
@@ -123,6 +125,7 @@ export default function LooksPage() {
   const [whyNotAnswers, setWhyNotAnswers] = useState<Record<string, string>>({});
 
   const [savedLooks, setSavedLooks] = useState<GeneratedLook[]>([]);
+  const [affinities, setAffinities] = useState<UserAffinities | null>(null);
   const [lookbookOpen, setLookbookOpen] = useState(false);
   const [collectionFilter, setCollectionFilter] = useState("all");
   const [dataLoaded, setDataLoaded] = useState(false);
@@ -137,7 +140,8 @@ export default function LooksPage() {
       measurementsStore.get(),
       inspirationStore.getAll(),
       lookStore.getAll(),
-    ]).then(([items, wigList, hair, color, style, userMeasurements, inspirations, looks]) => {
+      userAffinitiesStore.get(),
+    ]).then(([items, wigList, hair, color, style, userMeasurements, inspirations, looks, savedAffinities]) => {
       setClosetItems(items || []);
       setWigs(wigList || []);
       setHairProfile(hair || null);
@@ -146,13 +150,33 @@ export default function LooksPage() {
       setStyleDescription(style?.description || "");
       setStyleKeywords((inspirations || []).flatMap((i) => i.keywords || []));
       setSavedLooks(looks || []);
+      setAffinities(savedAffinities || emptyAffinities());
       setDataLoaded(true);
     });
   }, []);
 
+  // Applies a boost (or, with a negative delta, a small penalty) to
+  // the pairwise relationships among the given items, persists it, and
+  // updates local state so the next generation in this same session
+  // already reflects it, not just after a reload.
+  async function applyAffinityBoost(itemIds: string[], delta: number) {
+    const items = itemIds
+      .map((id) => closetItems.find((c) => c.id === id))
+      .filter(Boolean) as ClosetItem[];
+    if (items.length < 2) return;
+    const current = affinities || emptyAffinities();
+    const next = boostAffinities(current, items, delta);
+    await userAffinitiesStore.save(next);
+    setAffinities(next);
+  }
+
   async function removeSavedLook(look: GeneratedLook) {
     await lookStore.remove(look.id);
     setSavedLooks((prev) => prev.filter((l) => l.id !== look.id));
+    // Deleting a saved look is the closest signal this app has to an
+    // explicit rejection: a small negative nudge away from that
+    // specific pairing, not a hard ban on any of the items involved.
+    await applyAffinityBoost(look.itemIds, AFFINITY_DELTAS.rejected);
   }
 
   const usedCollections = useMemo(
@@ -269,7 +293,7 @@ export default function LooksPage() {
     const local = buildLocalLook(closetItems, prompt.trim(), context, energy, {
       colors: preferredColors,
       formalityCenter,
-    });
+    }, affinities);
     if (!local) {
       setError(
         "Your closet doesn't have enough marked-clean items yet to build a full look (need a dress, a set, or a top and bottom, plus shoes)."
@@ -467,6 +491,13 @@ export default function LooksPage() {
     setSavedLooks((prev) => [saved, ...prev]);
     setError("");
     setSavedMessage(markWorn ? "Marked as worn today." : "Saved to your favorites.");
+
+    // Manually built outfits are the gold standard (highest weight);
+    // marking a generated look as worn, or just favoriting it, is a
+    // real but softer endorsement.
+    const delta =
+      result.overallLabel === "Your pick" ? AFFINITY_DELTAS.manual : AFFINITY_DELTAS.worn;
+    await applyAffinityBoost(result.itemIds, delta);
   }
 
   async function askWhyNot(item: ClosetItem) {

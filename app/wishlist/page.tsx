@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Plus, Loader2, Link2, Camera, Trash2, ShoppingBag, X } from "lucide-react";
+import Link from "next/link";
+import { ArrowLeft, Plus, Loader2, Link2, Camera, Trash2, ShoppingBag, X } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
 import { fileToResizedDataUrl, resizeDataUrlForAI } from "@/lib/image";
 import { wishlistStore, closetStore, measurementsStore } from "@/lib/storage";
@@ -264,11 +265,16 @@ export default function WishlistPage() {
 
       <div className="max-w-md mx-auto px-4 pt-6 space-y-4">
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-semibold text-stone-800">Wishlist</h1>
-            <p className="text-sm text-stone-500 mt-0.5">
-              See if it&apos;s really worth it before you buy.
-            </p>
+          <div className="flex items-center gap-2 min-w-0">
+            <Link href="/discover" aria-label="Back" className="shrink-0">
+              <ArrowLeft size={18} className="text-stone-400" />
+            </Link>
+            <div className="min-w-0">
+              <h1 className="text-xl font-semibold text-stone-800">Wishlist</h1>
+              <p className="text-sm text-stone-500 mt-0.5">
+                See if it&apos;s really worth it before you buy.
+              </p>
+            </div>
           </div>
           <button
             onClick={() => setAddOpen(true)}

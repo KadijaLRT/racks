@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Luggage, Trash2, ChevronDown, ChevronUp } from "lucide-react";
+import Link from "next/link";
+import { ArrowLeft, Luggage, Trash2, ChevronDown, ChevronUp } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
 import OutfitItemStrip from "@/components/OutfitItemStrip";
 import { closetStore, tripStore } from "@/lib/storage";
@@ -69,13 +70,16 @@ export default function PackPage() {
   return (
     <main className="min-h-screen pb-28 pt-safe bg-cream">
       <div className="max-w-md mx-auto px-4 pt-6 space-y-4">
-        <div>
+        <div className="flex items-center gap-2">
+          <Link href="/discover" aria-label="Back">
+            <ArrowLeft size={18} className="text-stone-400" />
+          </Link>
           <h1 className="text-xl font-semibold text-stone-800">Pack</h1>
-          <p className="text-sm text-stone-500 mt-0.5">
-            How many days, and what should we call this trip? Get a packing
-            list and outfits from what you already own.
-          </p>
         </div>
+        <p className="text-sm text-stone-500">
+          How many days, and what should we call this trip? Get a packing
+          list and outfits from what you already own.
+        </p>
 
         <div className="bg-white rounded-2xl p-4 space-y-3">
           <input

@@ -7,8 +7,9 @@
 // role in selection at all — how often something's been worn says
 // nothing about whether it goes with what's already been picked.
 
-import type { ClosetItem } from "./types";
+import type { ClosetItem, UserAffinities } from "./types";
 import { colorsOf, isColorCompatibleWithAll } from "./colorCompatibility";
+import { affinityWeightMultiplier } from "./userAffinities";
 import {
   getExposure,
   getVolume,
@@ -29,9 +30,10 @@ export interface LocalLookResult {
 // that show up often in the person's own favorited looks (learned
 // preference, not a hard rule — it nudges the odds, it doesn't
 // exclude anything). Wear count plays no role here at all.
-export function weightedPick<T extends { pinned?: boolean; tags?: Record<string, string> }>(
+export function weightedPick<T extends { id: string; pinned?: boolean; tags?: Record<string, string> }>(
   candidates: T[],
-  preferredColors: string[] = []
+  preferredColors: string[] = [],
+  affinityContext?: { affinities: UserAffinities | null | undefined; established: T[] }
 ): T | null {
   if (candidates.length === 0) return null;
   const weights = candidates.map((c) => {
@@ -41,6 +43,13 @@ export function weightedPick<T extends { pinned?: boolean; tags?: Record<string,
       if (itemColors.some((ic) => preferredColors.includes(ic.toLowerCase()))) {
         w *= 1.6;
       }
+    }
+    if (affinityContext) {
+      w *= affinityWeightMultiplier(
+        affinityContext.affinities,
+        c as unknown as ClosetItem,
+        affinityContext.established as unknown as ClosetItem[]
+      );
     }
     return w;
   });
@@ -59,16 +68,17 @@ export function weightedPick<T extends { pinned?: boolean; tags?: Record<string,
  * (falls back to the full candidate list if none are compatible,
  * rather than failing to pick anything at all).
  */
-export function pickColorCompatible<T extends { pinned?: boolean; tags?: Record<string, string> }>(
+export function pickColorCompatible<T extends { id: string; pinned?: boolean; tags?: Record<string, string> }>(
   candidates: T[],
   referenceColors: string[],
-  preferredColors: string[] = []
+  preferredColors: string[] = [],
+  affinityContext?: { affinities: UserAffinities | null | undefined; established: T[] }
 ): T | null {
   if (candidates.length === 0) return null;
   const compatible = candidates.filter((c) =>
     isColorCompatibleWithAll(colorsOf(c.tags?.color), referenceColors)
   );
-  return weightedPick(compatible.length > 0 ? compatible : candidates, preferredColors);
+  return weightedPick(compatible.length > 0 ? compatible : candidates, preferredColors, affinityContext);
 }
 
 // --- Formality scoring ---------------------------------------------
@@ -265,7 +275,8 @@ export function buildLocalLook(
   occasion?: string,
   context?: string[],
   energy?: string,
-  preferences?: LearnedPreferences
+  preferences?: LearnedPreferences,
+  affinities?: UserAffinities | null
 ): LocalLookResult | null {
   let wearable = (items || []).filter(
     (i) => i?.laundryStatus === "clean" && i?.category !== "makeup" && i?.closetStatus !== "store"
@@ -461,16 +472,16 @@ export function buildLocalLook(
   const preferredColors = preferences?.colors || [];
 
   if (chosenBase === "dress") {
-    addPick(weightedPick(applyStyleBudget(dresses), preferredColors));
+    addPick(weightedPick(applyStyleBudget(dresses), preferredColors, { affinities, established: picked }));
   } else if (chosenBase === "set") {
-    addPick(weightedPick(applyStyleBudget(sets), preferredColors));
+    addPick(weightedPick(applyStyleBudget(sets), preferredColors, { affinities, established: picked }));
   } else {
     // Bottom picked first (usually the more color-neutral piece in
     // practice, e.g. denim/black trousers), then the top picked to be
     // color-compatible with it, rather than picking both blind.
-    let bottom = weightedPick(applyStyleBudget(bottoms), preferredColors);
+    let bottom = weightedPick(applyStyleBudget(bottoms), preferredColors, { affinities, established: picked });
     addPick(bottom);
-    const top = pickColorCompatible(applyStyleBudget(tops), establishedColors, preferredColors);
+    const top = pickColorCompatible(applyStyleBudget(tops), establishedColors, preferredColors, { affinities, established: picked });
 
     // Exposure balance: if both pieces landed on High Skin (a crop top
     // with a mini, say), that's the one combination the algorithm
@@ -480,7 +491,7 @@ export function buildLocalLook(
     if (top && bottom && getExposure(top) === "High Skin" && getExposure(bottom) === "High Skin") {
       const lowerExposureBottoms = bottoms.filter((b) => getExposure(b) !== "High Skin");
       if (lowerExposureBottoms.length > 0) {
-        const replacement = weightedPick(applyStyleBudget(lowerExposureBottoms), preferredColors);
+        const replacement = weightedPick(applyStyleBudget(lowerExposureBottoms), preferredColors, { affinities, established: picked });
         if (replacement) {
           picked.splice(picked.indexOf(bottom), 1);
           bottom = replacement;
@@ -514,7 +525,8 @@ export function buildLocalLook(
     pickColorCompatible(
       applyStyleBudget(shoeCandidates.length > 0 ? shoeCandidates : shoes),
       establishedColors,
-      preferredColors
+      preferredColors,
+      { affinities, established: picked }
     )
   );
 
@@ -541,7 +553,7 @@ export function buildLocalLook(
       const balancing = outerwearCandidates.filter((o) => getVolume(o) === complementaryVolume);
       if (balancing.length > 0) outerwearCandidates = balancing;
     }
-    addPick(pickColorCompatible(outerwearCandidates, establishedColors, preferredColors));
+    addPick(pickColorCompatible(outerwearCandidates, establishedColors, preferredColors, { affinities, established: picked }));
   }
 
   // Accessories: coordinate both metal tone (gold shoe hardware, e.g.)
@@ -568,7 +580,7 @@ export function buildLocalLook(
       ? 1
       : 2;
     for (let i = 0; i < accessoryCount && pool.length > 0; i++) {
-      const chosen = pickColorCompatible(pool, establishedColors, preferredColors);
+      const chosen = pickColorCompatible(pool, establishedColors, preferredColors, { affinities, established: picked });
       if (!chosen) break;
       addPick(chosen);
       pool = pool.filter((p) => p.id !== chosen.id);

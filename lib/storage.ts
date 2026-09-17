@@ -4,7 +4,6 @@ import type {
   WigItem,
   HairProfile,
   GeneratedLook,
-  DailyLook,
   WishlistItem,
   Trip,
   UpcomingPlan,
@@ -13,6 +12,7 @@ import type {
   StyleInspiration,
   UserMeasurements,
   AppSettings,
+  UserAffinities,
 } from "./types";
 
 // ---- id + prefix helpers -------------------------------------------------
@@ -71,8 +71,9 @@ const SINGLETON_KEY = {
   styleProfile: "style-profile",
   measurements: "user-measurements",
   appSettings: "app-settings",
-  todaysLook: "todays-look",
+  userAffinities: "user-affinities",
 } as const;
+
 /**
  * Generic collection helper. Every collection (closet, wigs, looks, etc.)
  * follows the same create / list / update / delete shape, so we implement
@@ -224,10 +225,10 @@ export const measurementsStore = createSingleton<UserMeasurements>(
 export const appSettingsStore = createSingleton<AppSettings>(
   SINGLETON_KEY.appSettings
 );
-export const todaysLookStore = createSingleton<DailyLook>(
-  SINGLETON_KEY.todaysLook
-);
 
+export const userAffinitiesStore = createSingleton<UserAffinities>(
+  SINGLETON_KEY.userAffinities
+);
 
 // ---- cross-cutting helpers ----------------------------------------------
 

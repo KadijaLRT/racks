@@ -882,6 +882,20 @@ export interface AppSettings {
   lastBackupAt?: number;
 }
 
+// The Preference Weight Matrix: learns from three signals (manual
+// outfits > worn favorites > rejections, matching the weighted
+// feedback channels in the spec) which pairings actually get chosen
+// or rejected, entirely locally. Keys are the two paired values
+// joined with "_", always in a stable sorted order so "Pink_Beige"
+// and "Beige_Pink" are the same entry rather than two drifting ones.
+export interface UserAffinities {
+  stylePairWeights: Record<string, number>;
+  colorPairWeights: Record<string, number>;
+  texturePairWeights: Record<string, number>;
+  itemPairWeights: Record<string, number>;
+  updatedAt?: number;
+}
+
 export interface UpcomingPlan {
   id: string;
   title: string;
@@ -901,13 +915,4 @@ export interface GeneratedLook {
   favorite: boolean;
   collection?: string;
   createdAt: number;
-
-}
-
-export interface DailyLook {
-  date: string;
-  itemIds: string[];
-  reasoning: string;
-  vibeLabel: string;
-  updatedAt: number;
 }

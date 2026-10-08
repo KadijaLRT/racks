@@ -9,6 +9,9 @@ import { CATEGORIES, categoryLabel } from "@/lib/categories";
 import { fileToResizedDataUrl, resizeDataUrlForAI } from "@/lib/image";
 import { extractDominantColorTag, isLikelySolidColor } from "@/lib/dominantColor";
 import { computeHistoryTagSuggestions } from "@/lib/localTagHistory";
+import { inferSubcategoryFromText } from "@/lib/localSubcategory";
+import { inferMissingAttributes } from "@/lib/attributeSchema";
+import { normalizeTags, normalizeTagValue, canonicalTagKey, formatTagKey } from "@/lib/tagNormalizer";
 import StylingTipList from "@/components/StylingTipList";
 import {
   braRecommendation,
@@ -181,7 +184,7 @@ export default function ItemEditSheet({
           }
           if (result?.subcategory) setSubcategory(result.subcategory);
           if (result?.tags && typeof result.tags === "object") {
-            setTags(result.tags);
+            setTags(normalizeTags(result.tags));
           }
           setFrontRetagged(true);
         }
@@ -222,14 +225,28 @@ export default function ItemEditSheet({
         );
         return;
       }
+      const nextName: string = result?.name || name;
+      const nextSubcategory: string = result?.subcategory || subcategory;
       if (result?.name) {
         setName(result.name);
         setNameAutoFillable(false);
       }
       if (result?.subcategory) setSubcategory(result.subcategory);
-      if (result?.tags && typeof result.tags === "object") {
-        setTags(result.tags);
-      }
+      // Keep what's already there (manual picks, collections-style
+      // tags) and let the fresh AI answer override matching keys, then
+      // fill every detail the AI skipped so nothing is left blank.
+      const merged = {
+        ...(tags || {}),
+        ...(result?.tags && typeof result.tags === "object" ? normalizeTags(result.tags) : {}),
+      };
+      const completed = {
+        ...merged,
+        ...inferMissingAttributes(
+          { id: item.id, name: nextName, category, subcategory: nextSubcategory, tags: merged },
+          allItems || []
+        ),
+      };
+      setTags(completed);
       setRetagItemSuccess(true);
     } catch {
       setRetagItemError("Couldn't reach the tagging service.");
@@ -251,44 +268,74 @@ export default function ItemEditSheet({
     setRetagItemError("");
     setRetagItemSuccess(false);
     const filledIn: string[] = [];
-    const alreadyHadSubcategory = Boolean(subcategory.trim());
+    let nextTags: Record<string, string> = { ...(tags || {}) };
+    let nextSubcategory = subcategory;
 
-    if (!tags?.color) {
+    // 1. Color and "Solid" from the actual pixels (garment only, the
+    // background is ignored). An existing Multicolor is re-checked
+    // because older versions counted the floor behind the item.
+    if (!nextTags.color || nextTags.color === "Multicolor") {
       const detected = await extractDominantColorTag(image);
-      if (detected) {
-        setTags((prev) => ({ ...(prev || {}), color: detected }));
+      if (detected && detected !== nextTags.color) {
+        nextTags.color = detected;
         filledIn.push("color");
       }
     }
-    if (!tags?.pattern) {
+    if (!nextTags.pattern) {
       const solid = await isLikelySolidColor(image);
       if (solid === true) {
-        setTags((prev) => ({ ...(prev || {}), pattern: "Solid" }));
+        nextTags.pattern = "Solid";
         filledIn.push("pattern");
       }
     }
-    if (alreadyHadSubcategory && allItems) {
-      const suggestions = computeHistorySuggestions();
-      const newKeys = Object.keys(suggestions);
-      if (newKeys.length > 0) {
-        setTags((prev) => ({ ...(prev || {}), ...suggestions }));
-        filledIn.push(...newKeys);
+
+    // 2. Subcategory from the name or tags, when it isn't set.
+    if (!nextSubcategory.trim()) {
+      const guessed = inferSubcategoryFromText(
+        category,
+        `${name} ${Object.values(nextTags).join(" ")}`
+      );
+      if (guessed) {
+        nextSubcategory = guessed;
+        setSubcategory(guessed);
+        filledIn.push("subcategory");
       }
     }
 
+    // 3. Every detail row (neckline, sleeve length, heel height, ...)
+    // from the name, your closet history and typical values for this
+    // kind of item. These are best guesses to edit, not certainties.
+    const history = allItems
+      ? computeHistoryTagSuggestions(
+          { id: item.id, category, subcategory: nextSubcategory, tags: nextTags },
+          allItems
+        )
+      : {};
+    for (const [k, v] of Object.entries(history)) {
+      if (!nextTags[k]) {
+        nextTags[k] = v;
+        filledIn.push(k);
+      }
+    }
+    const details = inferMissingAttributes(
+      { id: item.id, name, category, subcategory: nextSubcategory, tags: nextTags },
+      allItems || []
+    );
+    for (const [k, v] of Object.entries(details)) {
+      nextTags[k] = v;
+      filledIn.push(k);
+    }
+    nextTags = normalizeTags(nextTags);
+
     if (filledIn.length > 0) {
+      setTags(nextTags);
       setRetagItemSuccess(true);
       setTimeout(() => setRetagItemSuccess(false), 3000);
     } else {
-      // Being honest about scope here matters: color and pattern-
-      // solidity are the only things pixel analysis can actually
-      // determine. Subcategory (what type of garment this is) needs
-      // either AI or a person to look at it, silently doing nothing
-      // is exactly what made this feel broken.
       setRetagItemError(
-        !alreadyHadSubcategory
-          ? "Nothing to fill in locally without a subcategory set. What kind of item this is can't be determined without AI, pick a subcategory above or use Retag with AI."
-          : "Nothing left to fill in, color, pattern, and history suggestions are already set."
+        !nextSubcategory.trim()
+          ? "Pick a subcategory first (or give the item a name like \"black suede boots\"), then retag again so the details can be filled in."
+          : "Every detail that can be filled in without AI is already set."
       );
     }
   }
@@ -316,7 +363,7 @@ export default function ItemEditSheet({
         });
         const result = await res.json().catch(() => ({}));
         if (!result?.error && result?.tags && typeof result.tags === "object") {
-          setTags((prev) => ({ ...(prev || {}), ...result.tags }));
+          setTags((prev) => ({ ...(prev || {}), ...normalizeTags(result.tags) }));
         }
       } catch {
         // Non-blocking, see comment above.
@@ -414,8 +461,8 @@ export default function ItemEditSheet({
   }
 
   function addTag() {
-    const key = newTagKey.trim();
-    const value = newTagValue.trim();
+    const key = canonicalTagKey(newTagKey);
+    const value = normalizeTagValue(key, newTagValue);
     if (!key || !value) return;
     setTags((prev) => ({ ...(prev || {}), [key]: value }));
     setNewTagKey("");
@@ -441,7 +488,7 @@ export default function ItemEditSheet({
 
   function commitEditingTag() {
     if (!editingTagKey) return;
-    const value = editingTagValue.trim();
+    const value = normalizeTagValue(editingTagKey, editingTagValue);
     setTags((prev) => {
       const next = { ...(prev || {}) };
       if (value) {
@@ -974,7 +1021,7 @@ export default function ItemEditSheet({
                     key={key}
                     className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 text-xs px-2 py-1 rounded-full"
                   >
-                    <span className="whitespace-nowrap">{key}:</span>
+                    <span className="whitespace-nowrap">{formatTagKey(key)}:</span>
                     <input
                       autoFocus
                       value={editingTagValue}
@@ -997,7 +1044,7 @@ export default function ItemEditSheet({
                     onClick={() => startEditingTag(key, value)}
                     className="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-700 text-xs px-2.5 py-1 rounded-full"
                   >
-                    {key}: {value}
+                    {formatTagKey(key)}: {value}
                     <span
                       role="button"
                       tabIndex={0}

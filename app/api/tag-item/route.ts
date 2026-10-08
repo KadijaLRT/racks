@@ -1,17 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
+import { normalizeTags } from "@/lib/tagNormalizer";
 import { groqChat, parseGroqJson, buildImageMessage, buildTextMessage } from "@/lib/groq";
 import { isSafeImageDataUrl, sanitizeGroqText } from "@/lib/groqSanitizer";
 import type { ItemCategory } from "@/lib/types";
 
+// Use the app's own tag key names (camelCase) so what the AI returns
+// lines up with the detail rows in the item editor. Values are snapped to
+// the editor's option lists afterward by normalizeTags.
+const COMMON_TAIL = "formality, season, volume (Fitted/Relaxed/Oversized/Cropped), exposure (High Skin/Medium Skin/Low Skin), aesthetic (Streetwear/Elegant/Business Casual/Boho Chic/Comfort/Sexy/Girly)";
 const CATEGORY_FIELDS: Record<string, string> = {
-  top: "type (shirt/blouse/sweater/tee/etc), color, pattern, material, sleeve length, fit, formality, season",
-  bottom: "type (jeans/pants/skirt/shorts/etc), color, pattern, material, fit, formality, season",
-  dress: "silhouette, color, pattern, material, sleeve length, formality, season",
-  set: "matching set type (co-ord/two-piece/tracksuit/pajama set etc), color, pattern, material, formality, season",
-  swimwear: "type (bikini/monokini/one-piece/tankini/cover-up/rash guard), color, pattern, top style, bottom style",
-  outerwear: "type (blazer/coat/jacket/cardigan), color, material, formality, season",
-  shoes: "type (sneakers/boots/heels/flats/sandals), color, heel height, occasion",
-  accessory: "type (earrings/necklace/bracelet/ring/bag/hat/belt/scarf/sunglasses etc), color, material, occasion",
+  top: `type (shirt/blouse/sweater/tee/etc), color, pattern, fabric, neckline, sleeveLength, sleeve (sleeve style), silhouette, backStyle, ${COMMON_TAIL}`,
+  bottom: `type (jeans/pants/skirt/shorts/etc), color, pattern, fabric, fit (cut), rise, wash (jeans only), length (skirts/shorts), ${COMMON_TAIL}`,
+  dress: `silhouette, dressSilhouette, color, pattern, fabric, neckline, sleeveLength, backStyle, length, ${COMMON_TAIL}`,
+  set: `matching set type (co-ord/two-piece/tracksuit/pajama set etc), color, pattern, fabric, neckline, sleeveLength, ${COMMON_TAIL}`,
+  swimwear: "type (bikini/monokini/one-piece/tankini/cover-up/rash guard), color, pattern, swimsuitTop, swimsuitBottom, backStyle, exposure, aesthetic",
+  outerwear: `type (blazer/coat/jacket/cardigan), color, fabric, closure, length, fit, ${COMMON_TAIL}`,
+  shoes: "type (sneakers/boots/heels/flats/sandals), color, material, heelHeight, toeShape, occasion, aesthetic",
+  accessory: "type (earrings/necklace/bracelet/ring/bag/hat/belt/scarf/sunglasses etc), color, material, occasion, aesthetic",
   makeup: "product type (foundation/lipstick/blush/etc), shade, finish, undertone",
 };
 
@@ -44,11 +49,11 @@ export async function POST(req: NextRequest) {
           `You are a fashion cataloguing assistant. Look at the photo of a single wardrobe item and return ONLY a JSON object, no other text. Shape: { "name": string (a short, natural descriptive name like a stylist would write it, e.g. "White oversized linen button-up"), "subcategory": string (one specific noun for the item's type, e.g. "blouse", "sneakers", "midi skirt"), "tags": { key/value attributes as strings, include "brand" only if a logo, woven label, or other clear branding is visible in the photo } }. Base everything on exactly what's visible; never guess or infer a brand from style alone, only report one you can actually read or clearly recognize.`
         ),
         buildImageMessage(
-          `This is a ${safeCategory}. Detect these attributes if visible: ${fields}. Return the JSON object only.`,
+          `This is a ${safeCategory}. Detect these attributes (use these exact key names, camelCase, and fill in every one that applies, giving your best judgment): ${fields}. Return the JSON object only.`,
           image
         ),
       ],
-      { kind: "vision", jsonMode: true, temperature: 0.2, label: "Tagging new item", maxCompletionTokens: 500 }
+      { kind: "vision", jsonMode: true, temperature: 0.2, label: "Tagging new item", maxCompletionTokens: 800 }
     );
 
     const parsed = parseGroqJson(content, {
@@ -60,7 +65,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       name: parsed.name || "Untitled item",
       subcategory: parsed.subcategory || "",
-      tags: parsed.tags || {},
+      tags: normalizeTags(parsed.tags),
     });
   } catch (err) {
     console.error("tag-item failed:", err instanceof Error ? err.message : err);

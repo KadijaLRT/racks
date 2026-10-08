@@ -10,6 +10,9 @@ import BulkImportSheet from "@/components/BulkImportSheet";
 import { fileToResizedDataUrl, resizeDataUrlForAI } from "@/lib/image";
 import { extractDominantColorTag, isLikelySolidColor } from "@/lib/dominantColor";
 import { computeHistoryTagSuggestions } from "@/lib/localTagHistory";
+import { inferSubcategoryFromText } from "@/lib/localSubcategory";
+import { inferMissingAttributes } from "@/lib/attributeSchema";
+import { normalizeTags, tagsNeedNormalizing } from "@/lib/tagNormalizer";
 import { closetStore, appSettingsStore } from "@/lib/storage";
 import type { ClosetItem, ItemCategory } from "@/lib/types";
 import { COLLECTION_OPTIONS, SMART_COLLECTIONS, COLOR_OPTIONS, PATTERN_OPTIONS, FABRIC_OPTIONS } from "@/lib/types";
@@ -86,8 +89,25 @@ export default function ClosetPage() {
   }
 
   useEffect(() => {
-    closetStore.getAll().then((all) => {
-      setItems(all || []);
+    closetStore.getAll().then(async (all) => {
+      // One-time cleanup of tags saved before normalization existed
+      // (heel_height vs heelHeight, "grey" vs Gray, lowercase values).
+      // Only items that actually change are rewritten.
+      const cleaned: ClosetItem[] = [];
+      for (const item of all || []) {
+        if (tagsNeedNormalizing(item.tags)) {
+          const next = { ...item, tags: normalizeTags(item.tags) };
+          try {
+            await closetStore.update(next);
+            cleaned.push(next);
+            continue;
+          } catch (err) {
+            console.error("Tag cleanup failed for item", item.id, err);
+          }
+        }
+        cleaned.push(item);
+      }
+      setItems(cleaned);
       setLoaded(true);
     });
     appSettingsStore.get().then((settings) => {
@@ -487,11 +507,23 @@ export default function ClosetPage() {
       ...noSubcategory.map((i) => i.id),
       ...noColor.map((i) => i.id),
     ]);
+    // Items whose detail rows (neckline, sleeve length, heel height...)
+    // can be filled in locally. Only counted when something real can
+    // be filled, so this never flags an item that has nothing to add.
+    const detailIds = new Set(
+      items
+        .filter((i) => i?.category !== "makeup" && Object.keys(inferMissingAttributes(i, items)).length > 0)
+        .map((i) => i.id)
+    );
+    const allIds = new Set([...flaggedIds, ...detailIds]);
     return {
       untitledCount: untitled.length,
       noSubcategoryCount: noSubcategory.length,
       noColorCount: noColor.length,
+      noDetailsCount: detailIds.size,
       flagged: items.filter((i) => flaggedIds.has(i.id)),
+      // Everything the local (no AI) pass can improve.
+      localTargets: items.filter((i) => allIds.has(i.id)),
     };
   }, [items]);
 
@@ -540,11 +572,31 @@ export default function ClosetPage() {
             break;
           }
         } else if (tagged?.name) {
+          const mergedTags = {
+            ...(target.tags || {}),
+            ...normalizeTags(tagged.tags),
+          };
+          const nextSubcategory = tagged.subcategory || target.subcategory;
+          // Fill every detail the AI skipped (neckline, sleeve length,
+          // heel height, ...) so nothing is left blank to hunt for.
+          const filled = {
+            ...mergedTags,
+            ...inferMissingAttributes(
+              {
+                id: target.id,
+                name: tagged.name,
+                category: target.category,
+                subcategory: nextSubcategory,
+                tags: mergedTags,
+              },
+              items
+            ),
+          };
           const updated: ClosetItem = {
             ...target,
             name: tagged.name,
-            subcategory: tagged.subcategory || target.subcategory,
-            tags: { ...(target.tags || {}), ...(tagged.tags || {}) },
+            subcategory: nextSubcategory,
+            tags: filled,
           };
           await closetStore.update(updated);
           setItems((prev) =>
@@ -579,7 +631,7 @@ export default function ClosetPage() {
   // still show up in the next scan needing a manual pass or an actual
   // AI retag, but this closes real gaps instantly and for free.
   async function retagWithoutAI() {
-    const targets = scanResults.flagged;
+    const targets = scanResults.localTargets;
     if (targets.length === 0) return;
     setRetagging(true);
     setRetagSummary(null);
@@ -593,9 +645,12 @@ export default function ClosetPage() {
       const newTags = { ...(target.tags || {}) };
       let changed = false;
 
-      if (!target.tags?.color) {
+      // An existing "Multicolor" is re-checked too: earlier versions
+      // counted the floor/rug behind the item and mislabeled single-
+      // color pieces, so it can't be trusted as a deliberate choice.
+      if (!target.tags?.color || target.tags.color === "Multicolor") {
         const detectedColor = await extractDominantColorTag(target.image);
-        if (detectedColor) {
+        if (detectedColor && detectedColor !== target.tags?.color) {
           newTags.color = detectedColor;
           changed = true;
         }
@@ -607,9 +662,30 @@ export default function ClosetPage() {
           changed = true;
         }
       }
-      if (target.subcategory?.trim()) {
-        const historySuggestions = computeHistoryTagSuggestions(target, items);
+      let workingTarget = target;
+      if (!target.subcategory?.trim()) {
+        const guessed = inferSubcategoryFromText(
+          target.category,
+          `${target.name || ""} ${Object.values(target.tags || {}).join(" ")}`
+        );
+        if (guessed) {
+          workingTarget = { ...target, subcategory: guessed };
+          changed = true;
+        }
+      }
+      if (workingTarget.subcategory?.trim()) {
+        const historySuggestions = computeHistoryTagSuggestions(workingTarget, items);
         for (const [k, v] of Object.entries(historySuggestions)) {
+          newTags[k] = v;
+          changed = true;
+        }
+        // Then every remaining detail row (neckline, sleeve length, ...)
+        // from the name, closet history and typical values.
+        const details = inferMissingAttributes(
+          { ...workingTarget, tags: newTags },
+          items
+        );
+        for (const [k, v] of Object.entries(details)) {
           newTags[k] = v;
           changed = true;
         }
@@ -620,7 +696,7 @@ export default function ClosetPage() {
       }
 
       if (changed) {
-        const updated = { ...target, tags: newTags };
+        const updated = { ...workingTarget, tags: newTags };
         await closetStore.update(updated);
         updates.push(updated);
         updatedCount += 1;
@@ -840,7 +916,7 @@ export default function ClosetPage() {
         ) : null}
 
         {(() => {
-          const flaggedCount = scanResults.flagged.length;
+          const flaggedCount = scanResults.localTargets.length;
           if (flaggedCount === 0 && !retagging && !retagSummary) return null;
 
           return (
@@ -891,18 +967,23 @@ export default function ClosetPage() {
                         scanResults.noColorCount > 0
                           ? `${scanResults.noColorCount} no color`
                           : null,
+                        scanResults.noDetailsCount > 0
+                          ? `${scanResults.noDetailsCount} missing details`
+                          : null,
                       ]
                         .filter(Boolean)
                         .join(" · ")}
                     </p>
                   </div>
                   <div className="flex flex-col items-end gap-1 shrink-0">
-                    <button
-                      onClick={retagUntitledItems}
-                      className="text-xs font-medium text-emerald-700 whitespace-nowrap"
-                    >
-                      Retag now
-                    </button>
+                    {scanResults.flagged.length > 0 ? (
+                      <button
+                        onClick={retagUntitledItems}
+                        className="text-xs font-medium text-emerald-700 whitespace-nowrap"
+                      >
+                        Retag now
+                      </button>
+                    ) : null}
                     <button
                       onClick={retagWithoutAI}
                       className="text-[11px] text-stone-500 whitespace-nowrap"

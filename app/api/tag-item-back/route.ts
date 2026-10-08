@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { normalizeTags } from "@/lib/tagNormalizer";
 import { groqChat, parseGroqJson, buildImageMessage, buildTextMessage } from "@/lib/groq";
 import { isSafeImageDataUrl, sanitizeGroqText } from "@/lib/groqSanitizer";
 import type { ItemCategory } from "@/lib/types";
@@ -39,7 +40,7 @@ export async function POST(req: NextRequest) {
 
     const parsed = parseGroqJson(content, { tags: {} as Record<string, string> });
 
-    return NextResponse.json({ tags: parsed.tags || {} });
+    return NextResponse.json({ tags: normalizeTags(parsed.tags) });
   } catch (err) {
     console.error("tag-item-back failed:", err instanceof Error ? err.message : err);
     return NextResponse.json(

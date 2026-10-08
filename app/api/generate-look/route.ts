@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { groqChat, parseGroqJson, buildTextMessage, TEXT_MODEL } from "@/lib/groq";
+import { groqChat, parseGroqJson, buildTextMessage } from "@/lib/groq";
 import { sanitizeGroqText, sanitizeGroqPayload, formatTagsCompact } from "@/lib/groqSanitizer";
 import type { ClosetItem, WigItem, HairProfile, ColorProfile, UserMeasurements } from "@/lib/types";
 
@@ -272,7 +272,7 @@ ${refinementContext ? "Apply the requested change to the existing look." : "Buil
       buildTextMessage("user", userPrompt),
     ];
     const callOpts = {
-      model: TEXT_MODEL,
+      kind: "text" as const,
       jsonMode: true,
       temperature: 0.6,
       label: "Generating a look",

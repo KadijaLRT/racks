@@ -238,9 +238,17 @@ export default function LooksPage() {
       setWhyNotOpen(false);
       setWhyNotAnswers({});
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Something went wrong generating that look."
-      );
+      const aiMessage =
+        err instanceof Error ? err.message : "Something went wrong generating that look.";
+      // The AI being unavailable (blocked model, rate limit, empty
+      // answer) should never leave the person with nothing. For a fresh
+      // look (not a refinement of an existing one) fall back to the
+      // local builder, and say so plainly.
+      if (!instruction && buildWithoutAI()) {
+        setSavedMessage("The AI wasn't available, so this look was built locally from your closet.");
+      } else {
+        setError(aiMessage);
+      }
     } finally {
       setLoading(false);
     }
@@ -252,13 +260,13 @@ export default function LooksPage() {
   // the same basic logic the AI prompt asks for (favor neglected
   // pieces, respect pinned favorites, require a coherent combo) as
   // pure local selection instead.
-  function buildWithoutAI() {
+  function buildWithoutAI(): boolean {
     // The shake gesture calls this directly, bypassing the button's
     // disabled state, so this needs its own guard against firing
     // before the closet has actually finished loading (which would
     // otherwise show a misleading "not enough items" error to someone
     // who has plenty, just hasn't had them load yet).
-    if (!dataLoaded) return;
+    if (!dataLoaded) return false;
     setError("");
     setSavedMessage("");
 
@@ -298,7 +306,7 @@ export default function LooksPage() {
       setError(
         "Your closet doesn't have enough marked-clean items yet to build a full look (need a dress, a set, or a top and bottom, plus shoes)."
       );
-      return;
+      return false;
     }
     setResult({
       itemIds: local.itemIds,
@@ -323,6 +331,7 @@ export default function LooksPage() {
     setRefinement("");
     setWhyNotOpen(false);
     setWhyNotAnswers({});
+    return true;
   }
 
   // Not every request should go through an algorithm at all: someone

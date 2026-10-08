@@ -1,25 +1,116 @@
 import { sanitizeGroqText, isSafeImageDataUrl } from "./groqSanitizer";
 
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
+const GROQ_MODELS_URL = "https://api.groq.com/openai/v1/models";
 
-// Groq's model lineup changes often and they deprecate models with only
-// email notice. If tagging/generation ever starts failing with a 404 or
-// "model_decommissioned"/"model_not_found" error, check
-// https://console.groq.com/docs/models (or GET
-// https://api.groq.com/openai/v1/models with your own API key, which
-// lists exactly what your account can currently access) and override
-// via GROQ_VISION_MODEL / GROQ_TEXT_MODEL env vars rather than editing
-// this file. qwen/qwen3.6-27b previously failed here with a live 404
-// ("does not exist or you do not have access to it") despite still
-// being listed in Groq's docs — it's marked "preview" there, and
-// preview-tier models can have inconsistent account/region access
-// even while still documented. qwen/qwen3.8-27b is presented as its
-// non-preview successor with the same shape (multimodal, tool use,
-// JSON mode), used here for that reason, but re-verify against the
-// models endpoint above if this one ever starts failing too.
+// Groq's model lineup changes often, and they deprecate or block models
+// (sometimes per-project) with little warning. Rather than hardcode one
+// model name that can silently 404 or 403 on any given account, these
+// are ordered fallback lists: the app tries each in order and only
+// fails if every single one is actually unusable for this account. An
+// env var always wins when set (checked first, never swapped out
+// mid-session even if it later errors — an explicit override means the
+// user is deliberately pinning it).
+const VISION_MODEL_CANDIDATES = [
+  "qwen/qwen3.8-27b",
+  "qwen/qwen3.6-27b",
+  "meta-llama/llama-4-scout-17b-16e-instruct",
+  "meta-llama/llama-4-maverick-17b-128e-instruct",
+];
+const TEXT_MODEL_CANDIDATES = [
+  "openai/gpt-oss-120b",
+  "openai/gpt-oss-20b",
+  "llama-3.3-70b-versatile",
+];
+
 export const VISION_MODEL =
-  process.env.GROQ_VISION_MODEL || "qwen/qwen3.8-27b";
-export const TEXT_MODEL = process.env.GROQ_TEXT_MODEL || "openai/gpt-oss-120b";
+  process.env.GROQ_VISION_MODEL || VISION_MODEL_CANDIDATES[0];
+export const TEXT_MODEL =
+  process.env.GROQ_TEXT_MODEL || TEXT_MODEL_CANDIDATES[0];
+
+// In-memory cache of which model IDs this account can actually use right
+// now, keyed by a coarse "kind" (vision/text) so a blocked/decommissioned
+// model for one account doesn't require editing code — it self-detects
+// and moves to the next candidate. Cached per warm server instance only;
+// a cold start re-checks, which is cheap (one GET) and keeps this honest
+// if the Groq project's permissions change between deploys.
+let modelListCache: { ids: Set<string>; fetchedAt: number } | null = null;
+const MODEL_LIST_TTL_MS = 10 * 60 * 1000;
+
+async function fetchAvailableModelIds(apiKey: string): Promise<Set<string>> {
+  if (modelListCache && Date.now() - modelListCache.fetchedAt < MODEL_LIST_TTL_MS) {
+    return modelListCache.ids;
+  }
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8_000);
+    const res = await fetch(GROQ_MODELS_URL, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timeoutId));
+    if (!res.ok) {
+      // Can't verify right now (network hiccup, key issue the chat call
+      // will also hit). Don't cache a failure — fall through to an empty
+      // set so the caller just tries its normal default/candidate order
+      // without pretending we confirmed anything.
+      return new Set();
+    }
+    const data = await res.json();
+    const ids = new Set<string>(
+      Array.isArray(data?.data)
+        ? data.data.map((m: { id?: string }) => m?.id).filter(Boolean)
+        : []
+    );
+    modelListCache = { ids, fetchedAt: Date.now() };
+    return ids;
+  } catch {
+    return new Set();
+  }
+}
+
+// True when a Groq error response indicates the *model itself* is the
+// problem (unavailable, decommissioned, or blocked at the project/account
+// level) rather than a request, content, or rate-limit problem. These are
+// the only cases worth swapping to a fallback model and retrying; a 429
+// or a malformed-JSON 400 would just fail identically on a different
+// model too.
+function isModelUnavailableError(status: number, bodyText: string): boolean {
+  if (status !== 404 && status !== 403) return false;
+  return (
+    bodyText.includes("model_not_found") ||
+    bodyText.includes("model_decommissioned") ||
+    bodyText.includes("model_permission_blocked_project") ||
+    bodyText.includes("does not exist or you do not have access")
+  );
+}
+
+/**
+ * Picks the best model to try for a given purpose: the env override if
+ * set, otherwise the first candidate confirmed available via the live
+ * models endpoint, otherwise just the first candidate (so a models-list
+ * fetch failure doesn't block the app — the real chat call will surface
+ * whatever the actual problem is).
+ */
+async function resolvePreferredModel(
+  kind: "vision" | "text",
+  apiKey: string
+): Promise<string> {
+  const envOverride =
+    kind === "vision" ? process.env.GROQ_VISION_MODEL : process.env.GROQ_TEXT_MODEL;
+  if (envOverride) return envOverride;
+
+  const candidates = kind === "vision" ? VISION_MODEL_CANDIDATES : TEXT_MODEL_CANDIDATES;
+  const availableIds = await fetchAvailableModelIds(apiKey);
+  if (availableIds.size > 0) {
+    const firstAvailable = candidates.find((id) => availableIds.has(id));
+    if (firstAvailable) return firstAvailable;
+  }
+  return candidates[0];
+}
+
+function candidatesFor(kind: "vision" | "text"): string[] {
+  return kind === "vision" ? VISION_MODEL_CANDIDATES : TEXT_MODEL_CANDIDATES;
+}
 
 type ChatContent =
   | string
@@ -34,7 +125,13 @@ interface ChatMessage {
 }
 
 interface GroqCallOptions {
-  model: string;
+  // Either a specific model ID (kept for callers that need one exact
+  // model), or a "kind" that resolves to this account's best currently
+  // working model and transparently falls back through the candidate
+  // list if that model turns out to be blocked/decommissioned. New
+  // callers should prefer `kind` over `model`.
+  model?: string;
+  kind?: "vision" | "text";
   jsonMode?: boolean;
   temperature?: number;
   maxCompletionTokens?: number;
@@ -112,7 +209,7 @@ async function callGroq(
       },
       signal: controller.signal,
       body: JSON.stringify({
-      model: opts.model,
+      model: opts.model || TEXT_MODEL,
       messages,
       temperature: opts.temperature ?? 0.4,
       // Groq's default max_completion_tokens (1024 on many models) is
@@ -147,7 +244,7 @@ async function callGroq(
       // text-only routes on GPT-OSS kept working.
       ...(opts.jsonMode
         ? {
-            reasoning_effort: opts.model.includes("qwen") ? "none" : "low",
+            reasoning_effort: (opts.model || "").includes("qwen") ? "none" : "low",
           }
         : {}),
       }),
@@ -238,7 +335,57 @@ export async function groqChat(
   activeLabel = opts.label || "an AI request";
   activeLabelSetAt = Date.now();
 
+  // Resolve which model this call actually uses. `kind`-based calls get
+  // the live-checked best candidate plus a full fallback chain if it
+  // turns out to be blocked; a caller that passed an explicit `model`
+  // keeps old fixed behavior (no fallback chain) since it asked for that
+  // model specifically.
+  const fallbackChain: string[] = opts.kind
+    ? [
+        await resolvePreferredModel(opts.kind, apiKey),
+        ...candidatesFor(opts.kind),
+      ].filter((id, idx, arr) => arr.indexOf(id) === idx)
+    : [opts.model || TEXT_MODEL];
+
   try {
+    return await groqChatWithFallback(messages, opts, apiKey, fallbackChain, 0);
+  } finally {
+    activeLabel = null;
+    activeLabelSetAt = 0;
+  }
+}
+
+async function groqChatWithFallback(
+  messages: ChatMessage[],
+  opts: GroqCallOptions,
+  apiKey: string,
+  fallbackChain: string[],
+  chainIndex: number
+): Promise<string> {
+  const model = fallbackChain[chainIndex];
+  const callOpts: GroqCallOptions = { ...opts, model };
+
+  try {
+    return await groqChatOnce(messages, callOpts, apiKey);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const hasMoreFallbacks = chainIndex + 1 < fallbackChain.length;
+    if (hasMoreFallbacks && /Groq API error \((404|403)\):/.test(message)) {
+      const bodyText = message.slice(message.indexOf("):") + 2);
+      if (isModelUnavailableError(message.includes("(404)") ? 404 : 403, bodyText)) {
+        return groqChatWithFallback(messages, opts, apiKey, fallbackChain, chainIndex + 1);
+      }
+    }
+    throw err;
+  }
+}
+
+async function groqChatOnce(
+  messages: ChatMessage[],
+  opts: GroqCallOptions,
+  apiKey: string
+): Promise<string> {
+  {
     const isJsonValidationFailure = (text: string) => {
       try {
         const parsed = JSON.parse(text);
@@ -348,9 +495,6 @@ export async function groqChat(
 
     const data = await res.json();
     return data?.choices?.[0]?.message?.content || "";
-  } finally {
-    activeLabel = null;
-    activeLabelSetAt = 0;
   }
 }
 

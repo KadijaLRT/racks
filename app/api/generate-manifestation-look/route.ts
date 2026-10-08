@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { groqChat, parseGroqJson, buildTextMessage, TEXT_MODEL } from "@/lib/groq";
+import { groqChat, parseGroqJson, buildTextMessage } from "@/lib/groq";
 import { sanitizeGroqPayload, sanitizeGroqText, formatTagsCompact } from "@/lib/groqSanitizer";
 import type { ClosetItem, WigItem, HairProfile, ColorProfile } from "@/lib/types";
 
@@ -194,7 +194,7 @@ Build a look to manifest ${intention.toLowerCase()}, using ONLY the items above.
       buildTextMessage("user", userPrompt),
     ];
     const callOpts = {
-      model: TEXT_MODEL,
+      kind: "text" as const,
       jsonMode: true,
       temperature: 0.75,
       label: "Generating manifestation look",

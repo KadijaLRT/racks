@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { groqChat, parseGroqJson, buildTextMessage, TEXT_MODEL } from "@/lib/groq";
+import { groqChat, parseGroqJson, buildTextMessage } from "@/lib/groq";
 import { sanitizeGroqPayload, sanitizeGroqText, formatTagsCompact } from "@/lib/groqSanitizer";
 import type { ClosetItem } from "@/lib/types";
 
@@ -69,7 +69,7 @@ Why wasn't this item chosen instead?`;
 
     const content = await groqChat(
       [buildTextMessage("system", systemPrompt), buildTextMessage("user", userPrompt)],
-      { model: TEXT_MODEL, jsonMode: true, temperature: 0.5, label: "Explaining outfit choice", maxCompletionTokens: 400 }
+      { kind: "text", jsonMode: true, temperature: 0.5, label: "Explaining outfit choice", maxCompletionTokens: 400 }
     );
 
     const parsed = parseGroqJson<{ reason: string }>(content, FALLBACK);

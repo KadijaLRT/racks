@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { groqChat, parseGroqJson, buildImageMessage, buildTextMessage, VISION_MODEL } from "@/lib/groq";
+import { groqChat, parseGroqJson, buildImageMessage, buildTextMessage } from "@/lib/groq";
 import { isSafeImageDataUrl } from "@/lib/groqSanitizer";
 
 interface TagHairBody {
@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
           image
         ),
       ],
-      { model: VISION_MODEL, jsonMode: true, temperature: 0.2, label: "Analyzing hair photo", maxCompletionTokens: 400 }
+      { kind: "vision", jsonMode: true, temperature: 0.2, label: "Analyzing hair photo", maxCompletionTokens: 400 }
     );
 
     const parsed = parseGroqJson(content, {

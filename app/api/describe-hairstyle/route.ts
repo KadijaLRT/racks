@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { groqChat, parseGroqJson, buildTextMessage, TEXT_MODEL } from "@/lib/groq";
+import { groqChat, parseGroqJson, buildTextMessage } from "@/lib/groq";
 import { sanitizeGroqText } from "@/lib/groqSanitizer";
 
 interface DescribeHairstyleBody {
@@ -38,7 +38,7 @@ ${outfitContext ? `They're dressed for: ${outfitContext}` : ""}`;
 
     const content = await groqChat(
       [buildTextMessage("system", systemPrompt), buildTextMessage("user", userPrompt)],
-      { model: TEXT_MODEL, jsonMode: true, temperature: 0.6, label: "Describing hairstyle", maxCompletionTokens: 600 }
+      { kind: "text", jsonMode: true, temperature: 0.6, label: "Describing hairstyle", maxCompletionTokens: 600 }
     );
 
     const parsed = parseGroqJson<{ preview: string; stylingSteps: string[] }>(content, {

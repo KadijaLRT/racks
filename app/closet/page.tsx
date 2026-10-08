@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Plus, Loader2, Search, Camera, Images } from "lucide-react";
+import { Plus, Loader2, Search, Camera, Images, Trash2 } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
 import ItemCard from "@/components/ItemCard";
 import ItemEditSheet from "@/components/ItemEditSheet";
@@ -47,6 +47,8 @@ export default function ClosetPage() {
   } | null>(null);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const [batchSheetOpen, setBatchSheetOpen] = useState(false);
   const [batchApplying, setBatchApplying] = useState(false);
   const [batchCollections, setBatchCollections] = useState<string[]>([]);
@@ -366,11 +368,50 @@ export default function ClosetPage() {
       else next.add(id);
       return next;
     });
+    // Any change to the selection cancels a pending delete confirmation,
+    // so "Delete 5?" can never silently apply to a different set.
+    setConfirmBulkDelete(false);
   }
 
   function exitSelectMode() {
     setSelectMode(false);
     setSelectedIds(new Set());
+    setConfirmBulkDelete(false);
+  }
+
+  // Two-step (tap Delete, then confirm) because deletion is permanent
+  // and local-only: there's no server copy to recover from. Each item
+  // is removed independently so one failure can't strand the rest, and
+  // only the ones that actually deleted leave the screen.
+  async function deleteSelectedItems() {
+    if (bulkDeleting) return;
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    setBulkDeleting(true);
+    const removed = new Set<string>();
+    for (const id of ids) {
+      try {
+        await closetStore.remove(id);
+        removed.add(id);
+      } catch (err) {
+        console.error("Bulk delete failed for item", id, err);
+      }
+    }
+    setItems((prev) => (prev || []).filter((i) => !removed.has(i.id)));
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      removed.forEach((id) => next.delete(id));
+      return next;
+    });
+    setConfirmBulkDelete(false);
+    setBulkDeleting(false);
+    const failed = ids.length - removed.size;
+    showAddedToast(
+      failed === 0
+        ? `Deleted ${removed.size} item${removed.size === 1 ? "" : "s"}`
+        : `Deleted ${removed.size}, ${failed} couldn't be deleted`
+    );
+    if (failed === 0) exitSelectMode();
   }
 
   // Closing without applying (backdrop tap, X button) still needs to
@@ -991,7 +1032,7 @@ export default function ClosetPage() {
             // action (e.g. "Mark all clean" from the dirty-items
             // banner, which doesn't exit select mode) can't visually
             // collide with it.
-            selectMode && selectedIds.size > 0 ? "bottom-36" : "bottom-24"
+            selectMode && selectedIds.size > 0 ? "bottom-44" : "bottom-24"
           } ${
             addedToast.isError
               ? "max-w-[90%] w-80 rounded-2xl text-left text-xs px-4 py-3 leading-snug"
@@ -1104,15 +1145,49 @@ export default function ClosetPage() {
       ) : null}
 
       {selectMode && selectedIds.size > 0 ? (
-        <div className="fixed bottom-20 left-0 right-0 flex justify-center px-4 z-40">
+        // Sits above the BottomNav (which is taller than 5rem once the
+        // home-indicator safe area is added), so it was being covered.
+        <div
+          className="fixed left-0 right-0 flex justify-center px-4 z-50"
+          style={{ bottom: "calc(5.5rem + env(safe-area-inset-bottom))" }}
+        >
           <div className="bg-stone-800 text-cream rounded-full px-4 py-2.5 flex items-center gap-3 shadow-lg">
             <span className="text-xs">{selectedIds.size} selected</span>
-            <button
-              onClick={() => setBatchSheetOpen(true)}
-              className="text-xs font-medium bg-emerald-600 px-3 py-1.5 rounded-full"
-            >
-              Apply tags
-            </button>
+            {confirmBulkDelete ? (
+              <>
+                <button
+                  onClick={deleteSelectedItems}
+                  disabled={bulkDeleting}
+                  className="text-xs font-medium bg-red-600 px-3 py-1.5 rounded-full disabled:opacity-60"
+                >
+                  {bulkDeleting ? "Deleting..." : `Delete ${selectedIds.size}?`}
+                </button>
+                <button
+                  onClick={() => setConfirmBulkDelete(false)}
+                  disabled={bulkDeleting}
+                  className="text-xs text-stone-300"
+                >
+                  Keep
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => setBatchSheetOpen(true)}
+                  className="text-xs font-medium bg-emerald-600 px-3 py-1.5 rounded-full"
+                >
+                  Apply tags
+                </button>
+                <button
+                  onClick={() => setConfirmBulkDelete(true)}
+                  aria-label="Delete selected items"
+                  className="flex items-center gap-1 text-xs font-medium bg-stone-700 px-3 py-1.5 rounded-full"
+                >
+                  <Trash2 size={13} />
+                  Delete
+                </button>
+              </>
+            )}
           </div>
         </div>
       ) : null}

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { groqChat, parseGroqJson, buildImageMessage, buildTextMessage, VISION_MODEL } from "@/lib/groq";
+import { groqChat, parseGroqJson, buildImageMessage, buildTextMessage } from "@/lib/groq";
 import { isSafeImageDataUrl } from "@/lib/groqSanitizer";
 
 interface AnalyzeStyleBody {
@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
           image
         ),
       ],
-      { model: VISION_MODEL, jsonMode: true, temperature: 0.4, label: "Analyzing style profile", maxCompletionTokens: 800 }
+      { kind: "vision", jsonMode: true, temperature: 0.4, label: "Analyzing style profile", maxCompletionTokens: 800 }
     );
 
     const parsed = parseGroqJson(content, { keywords: [] as string[] });

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { groqChat, parseGroqJson, buildTextMessage, TEXT_MODEL } from "@/lib/groq";
+import { groqChat, parseGroqJson, buildTextMessage } from "@/lib/groq";
 import { sanitizeGroqPayload, sanitizeGroqText } from "@/lib/groqSanitizer";
 import type { ClosetItem, ItemCategory, UserMeasurements } from "@/lib/types";
 
@@ -114,7 +114,7 @@ ${closetList || "(closet is empty)"}`;
 
     const content = await groqChat(
       [buildTextMessage("system", systemPrompt), buildTextMessage("user", userPrompt)],
-      { model: TEXT_MODEL, jsonMode: true, temperature: 0.4, label: "Analyzing wishlist item", maxCompletionTokens: 700 }
+      { kind: "text", jsonMode: true, temperature: 0.4, label: "Analyzing wishlist item", maxCompletionTokens: 700 }
     );
 
     const parsed = parseGroqJson<AnalysisResult>(content, FALLBACK);

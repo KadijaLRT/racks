@@ -15,7 +15,7 @@ import { inferMissingAttributes } from "@/lib/attributeSchema";
 import { normalizeTags, tagsNeedNormalizing } from "@/lib/tagNormalizer";
 import { closetStore, appSettingsStore } from "@/lib/storage";
 import type { ClosetItem, ItemCategory } from "@/lib/types";
-import { COLLECTION_OPTIONS, SMART_COLLECTIONS, COLOR_OPTIONS, PATTERN_OPTIONS, FABRIC_OPTIONS } from "@/lib/types";
+import { SUBCATEGORY_SUGGESTIONS, SUBCATEGORY_GROUPS, COLLECTION_OPTIONS, SMART_COLLECTIONS, COLOR_OPTIONS, PATTERN_OPTIONS, FABRIC_OPTIONS } from "@/lib/types";
 import { CATEGORIES } from "@/lib/categories";
 
 export default function ClosetPage() {
@@ -27,6 +27,9 @@ export default function ClosetPage() {
   const [groupBy, setGroupBy] = useState("subcategory");
   const [search, setSearch] = useState("");
   const [pendingCategory, setPendingCategory] = useState<ItemCategory>("top");
+  // Optional: picked before upload so every new photo starts out with
+  // its subcategory and the detail rows that go with it already filled.
+  const [pendingSubcategory, setPendingSubcategory] = useState("");
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null);
   const [uploadError, setUploadError] = useState("");
@@ -304,11 +307,36 @@ export default function ClosetPage() {
               mergedTags.color = defaultUploadTags.color;
             }
 
+            // A subcategory chosen before upload applies to every
+            // photo in this selection: it gives the item a real name
+            // and lets every detail row (neckline, sleeve length, heel
+            // height, ...) be pre-selected right away, all local.
+            const chosenSub = pendingSubcategory.trim();
+            let itemName = "Untitled item";
+            if (chosenSub) {
+              const color = mergedTags.color && mergedTags.color !== "Multicolor" ? mergedTags.color : "";
+              itemName = `${color} ${chosenSub}`.trim().replace(/^./, (c) => c.toUpperCase());
+              const history = computeHistoryTagSuggestions(
+                { id: "new", category: pendingCategory, subcategory: chosenSub, tags: mergedTags },
+                items
+              );
+              for (const [k, v] of Object.entries(history)) {
+                if (!mergedTags[k]) mergedTags[k] = v;
+              }
+              Object.assign(
+                mergedTags,
+                inferMissingAttributes(
+                  { id: "new", name: itemName, category: pendingCategory, subcategory: chosenSub, tags: mergedTags },
+                  items
+                )
+              );
+            }
+
             return await closetStore.create({
               category: pendingCategory,
-              subcategory: undefined,
+              subcategory: chosenSub || undefined,
               image: dataUrl,
-              name: "Untitled item",
+              name: itemName,
               tags: mergedTags,
               collections:
                 defaultUploadTags.collections && defaultUploadTags.collections.length > 0
@@ -336,6 +364,8 @@ export default function ClosetPage() {
 
     setUploading(false);
     setUploadProgress(null);
+    // Cleared so the next upload can't silently reuse this choice.
+    setPendingSubcategory("");
     if (newItems.length > 0) {
       showAddedToast(
         `Added ${newItems.length} item${newItems.length === 1 ? "" : "s"}${
@@ -1141,7 +1171,10 @@ export default function ClosetPage() {
                 {CATEGORIES.map((c) => (
                   <button
                     key={c.value}
-                    onClick={() => setPendingCategory(c.value)}
+                    onClick={() => {
+                      setPendingCategory(c.value);
+                      setPendingSubcategory("");
+                    }}
                     className={`flex flex-col items-center gap-1 py-2.5 rounded-xl text-xs ${
                       pendingCategory === c.value
                         ? "bg-emerald-100 text-emerald-700"
@@ -1153,6 +1186,36 @@ export default function ClosetPage() {
                   </button>
                 ))}
               </div>
+              {(SUBCATEGORY_SUGGESTIONS[pendingCategory] || []).length > 0 ? (
+                <div className="mb-3">
+                  <label htmlFor="pending-subcategory" className="text-xs text-stone-500">
+                    Type of item (optional, applies to every photo you pick)
+                  </label>
+                  <select
+                    id="pending-subcategory"
+                    value={pendingSubcategory}
+                    onChange={(e) => setPendingSubcategory(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-clay-100 bg-white px-3 py-2.5 text-sm text-stone-700"
+                  >
+                    <option value="">Not sure yet, decide later</option>
+                    {SUBCATEGORY_GROUPS[pendingCategory]
+                      ? Object.entries(SUBCATEGORY_GROUPS[pendingCategory] || {}).map(([group, opts]) => (
+                          <optgroup key={group} label={group}>
+                            {(opts || []).map((o) => (
+                              <option key={o} value={o}>
+                                {o}
+                              </option>
+                            ))}
+                          </optgroup>
+                        ))
+                      : (SUBCATEGORY_SUGGESTIONS[pendingCategory] || []).map((o) => (
+                          <option key={o} value={o}>
+                            {o}
+                          </option>
+                        ))}
+                  </select>
+                </div>
+              ) : null}
               <button
                 onClick={() => fileRef.current?.click()}
                 className="w-full rounded-xl bg-emerald-600 text-cream py-3 text-sm font-medium flex items-center justify-center gap-2"

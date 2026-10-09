@@ -16,7 +16,7 @@ const CATEGORY_FIELDS: Record<string, string> = {
   swimwear: "type (bikini/monokini/one-piece/tankini/cover-up/rash guard), color, pattern, swimsuitTop, swimsuitBottom, backStyle, exposure, aesthetic",
   outerwear: `type (blazer/coat/jacket/cardigan), color, fabric, closure, length, fit, ${COMMON_TAIL}`,
   shoes: "type (sneakers/boots/heels/flats/sandals), color, material, heelHeight, toeShape, occasion, aesthetic",
-  accessory: "type (earrings/necklace/bracelet/ring/bag/hat/belt/scarf/sunglasses etc), color, material, occasion, aesthetic",
+  accessory: "type (earrings/necklace/bracelet/ring/bag/hat/belt/scarf/sunglasses etc), color, material, occasion, aesthetic. IF IT IS A BAG also give: bagStyle (Tote/Crossbody/Shoulder Bag/Satchel/Hobo/Clutch/Bucket Bag/Backpack/Belt Bag/Top Handle/Duffel / Weekender/Mini Bag/Wristlet), size (Mini/Small/Medium/Large/Oversized; judge from handle length, hardware scale, and anything in frame for comparison, then from the bag shape), pattern (the design: Solid/Monogram/Quilted/Woven/Logo Print/Studded/Embellished/Croc Embossed/Animal Print/Floral/Color Block/Fringe/Chain Strap/Plaid / Check/Metallic), hardware (Gold/Silver/Gunmetal/Rose Gold/Brass/None), brand",
   makeup: "product type (foundation/lipstick/blush/etc), shade, finish, undertone",
 };
 
@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
       [
         buildTextMessage(
           "system",
-          `You are a fashion cataloguing assistant. Look at the photo of a single wardrobe item and return ONLY a JSON object, no other text. Shape: { "name": string (a short, natural descriptive name like a stylist would write it, e.g. "White oversized linen button-up"), "subcategory": string (one specific noun for the item's type, e.g. "blouse", "sneakers", "midi skirt"), "tags": { key/value attributes as strings, include "brand" only if a logo, woven label, or other clear branding is visible in the photo } }. Base everything on exactly what's visible; never guess or infer a brand from style alone, only report one you can actually read or clearly recognize.`
+          `You are a fashion cataloguing assistant. Look at the photo of a single wardrobe item and return ONLY a JSON object, no other text. Shape: { "name": string (a short, natural descriptive name like a stylist would write it, e.g. "White oversized linen button-up"), "subcategory": string (one specific noun for the item's type, e.g. "blouse", "sneakers", "midi skirt"), "tags": { key/value attributes as strings, include "brand" only if branding is visible: a readable logo or label, a hardware plate or engraving, or an unmistakable signature print or monogram (for example interlocking GG, LV monogram canvas, Coach signature C, MK logo print, Chanel quilting with an interlocking CC clasp, YSL cassandre, Dior Oblique, Fendi FF, Burberry check, Prada triangle plate) } }. Base everything on exactly what's visible; never infer a brand from silhouette, color or general style alone. If you can point to a specific visible cue, report the brand; if you are unsure, leave brand out rather than guess.`
         ),
         buildImageMessage(
           `This is a ${safeCategory}. Detect these attributes (use these exact key names, camelCase, and fill in every one that applies, giving your best judgment): ${fields}. Return the JSON object only.`,

@@ -7,7 +7,7 @@ import ItemCard from "@/components/ItemCard";
 import ItemEditSheet from "@/components/ItemEditSheet";
 import RemixSheet from "@/components/RemixSheet";
 import BulkImportSheet from "@/components/BulkImportSheet";
-import { fileToResizedDataUrl, resizeDataUrlForAI } from "@/lib/image";
+import { fileToResizedDataUrl, resizeDataUrlForAIByCategory } from "@/lib/image";
 import { extractDominantColorTag, isLikelySolidColor } from "@/lib/dominantColor";
 import { computeHistoryTagSuggestions } from "@/lib/localTagHistory";
 import { inferSubcategoryFromText } from "@/lib/localSubcategory";
@@ -582,7 +582,7 @@ export default function ClosetPage() {
     for (let i = 0; i < targets.length; i++) {
       const target = targets[i];
       try {
-        const aiImage = await resizeDataUrlForAI(target.image);
+        const aiImage = await resizeDataUrlForAIByCategory(target.image, target.category);
         const res = await fetch("/api/tag-item", {
           method: "POST",
           headers: { "Content-Type": "application/json" },

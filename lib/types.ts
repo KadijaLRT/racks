@@ -489,6 +489,30 @@ export const EARRING_TYPE_OPTIONS = [
 // Shown only when the accessory subcategory is a bag.
 export const BAG_SIZE_OPTIONS = ["Mini", "Small", "Medium", "Large", "Oversized"];
 
+// Bag-only detail rows: shape, hardware finish, design, and brand
+// quick-picks (the brand field is still free text; these just feed the
+// suggestion list and spelling cleanup).
+export const BAG_STYLE_OPTIONS = [
+  "Tote", "Crossbody", "Shoulder Bag", "Satchel", "Hobo", "Clutch",
+  "Bucket Bag", "Backpack", "Belt Bag", "Top Handle", "Duffel / Weekender",
+  "Mini Bag", "Wristlet",
+];
+export const BAG_HARDWARE_OPTIONS = [
+  "Gold", "Silver", "Gunmetal", "Rose Gold", "Brass", "None",
+];
+export const BAG_DESIGN_OPTIONS = [
+  "Solid", "Monogram", "Quilted", "Woven", "Logo Print", "Studded",
+  "Embellished", "Croc Embossed", "Animal Print", "Floral", "Color Block",
+  "Fringe", "Chain Strap", "Plaid / Check", "Metallic",
+];
+export const BAG_BRAND_OPTIONS = [
+  "Coach", "Michael Kors", "Kate Spade", "Louis Vuitton", "Gucci", "Chanel",
+  "Prada", "Dior", "Saint Laurent", "Fendi", "Burberry", "Tory Burch",
+  "Marc Jacobs", "Steve Madden", "Guess", "Aldo", "Nike", "Fossil",
+  "Longchamp", "Hermes", "Balenciaga", "Bottega Veneta", "Celine",
+  "Telfar", "Shein", "Zara", "H&M", "Target",
+];
+
 // Shown only when the set subcategory is a bathing suit, replacing the
 // generic top/dress/set attribute rows (Sleeve Length, Sleeve Style,
 // Knit Type, etc. don't apply to swimwear).

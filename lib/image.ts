@@ -165,3 +165,19 @@ export function resizeDataUrlForAI(
     }
   });
 }
+
+
+/**
+ * Picks the resolution to send to the vision model by category. Small
+ * details decide the answer for accessories (a logo plate on a bag, a
+ * hallmark on jewelry), and at the default 512px they are a few pixels
+ * wide, so brands and designs get missed. Other categories stay small
+ * to keep the token cost down.
+ */
+export function resizeDataUrlForAIByCategory(
+  dataUrl: string,
+  category?: string
+): Promise<string> {
+  if (category === "accessory") return resizeDataUrlForAI(dataUrl, 1024, 0.8);
+  return resizeDataUrlForAI(dataUrl);
+}

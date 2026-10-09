@@ -15,7 +15,8 @@ import {
   TOP_SILHOUETTE_OPTIONS, JEWELRY_TYPE_OPTIONS, EARRING_TYPE_OPTIONS,
   HAT_TYPE_OPTIONS, SWIMSUIT_TYPE_OPTIONS, SWIMSUIT_TOP_STYLE_OPTIONS,
   SWIMSUIT_BOTTOM_STYLE_OPTIONS, AESTHETIC_OPTIONS, EXPOSURE_OPTIONS,
-  GARMENT_FIT_OPTIONS, JEAN_CUT_OPTIONS,
+  GARMENT_FIT_OPTIONS, JEAN_CUT_OPTIONS, BAG_STYLE_OPTIONS, BAG_HARDWARE_OPTIONS,
+  BAG_SIZE_OPTIONS, BAG_BRAND_OPTIONS,
 } from "./types";
 
 // The keys the editor and filters actually read.
@@ -26,7 +27,7 @@ const CANONICAL_KEYS = [
   "silhouette", "jewelryType", "earringType", "hatType", "swimsuitType",
   "swimsuitTop", "swimsuitBottom", "aesthetic", "exposure", "volume", "fit",
   "sweatsuitFit", "finish", "shade", "size", "brand", "season", "formality",
-  "occasion",
+  "occasion", "bagStyle", "hardware",
 ];
 
 const squash = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -125,6 +126,22 @@ const OPTION_LISTS: Record<string, string[]> = {
   exposure: asStrings(EXPOSURE_OPTIONS),
   volume: asStrings(GARMENT_FIT_OPTIONS),
   fit: [...asStrings(JEAN_CUT_OPTIONS), ...asStrings(GARMENT_FIT_OPTIONS)],
+  bagStyle: asStrings(BAG_STYLE_OPTIONS),
+  hardware: asStrings(BAG_HARDWARE_OPTIONS),
+  size: asStrings(BAG_SIZE_OPTIONS),
+  brand: asStrings(BAG_BRAND_OPTIONS),
+};
+
+// Brand shorthand and spellings seen on tags and labels.
+const BRAND_ALIASES: Record<string, string> = {
+  lv: "Louis Vuitton", louisvuitton: "Louis Vuitton", louisvuiton: "Louis Vuitton",
+  mk: "Michael Kors", michaelkors: "Michael Kors", michealkors: "Michael Kors",
+  ysl: "Saint Laurent", yvessaintlaurent: "Saint Laurent", saintlaurent: "Saint Laurent",
+  katespade: "Kate Spade", katespadenewyork: "Kate Spade", toryburch: "Tory Burch",
+  marcjacobs: "Marc Jacobs", stevemadden: "Steve Madden", hermes: "Hermes",
+  bottegaveneta: "Bottega Veneta", bottega: "Bottega Veneta", guccii: "Gucci",
+  chanell: "Chanel", cocochanel: "Chanel", christiandior: "Dior", dior: "Dior",
+  burbery: "Burberry", coachny: "Coach", handm: "H&M", hm: "H&M",
 };
 
 export function canonicalTagKey(rawKey: string): string {
@@ -150,6 +167,7 @@ function normalizeOne(key: string, part: string): string {
   const cleaned = part.replace(/\s+/g, " ").trim();
   if (!cleaned) return "";
   const flat = squash(cleaned);
+  if (key === "brand" && BRAND_ALIASES[flat]) return BRAND_ALIASES[flat];
   const options = OPTION_LISTS[key];
   const exact = options?.find((o) => squash(o) === flat);
   if (exact) return exact;

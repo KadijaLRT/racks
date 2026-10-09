@@ -23,7 +23,7 @@ import {
   SHOE_TOE_OPTIONS, SHOE_MATERIAL_OPTIONS, JEWELRY_TYPE_OPTIONS, HAT_TYPE_OPTIONS,
   BAG_SIZE_OPTIONS, SWIMSUIT_TYPE_OPTIONS, SWIMSUIT_TOP_STYLE_OPTIONS,
   SWIMSUIT_BOTTOM_STYLE_OPTIONS, FABRIC_OPTIONS, EXPOSURE_OPTIONS,
-  AESTHETIC_OPTIONS, EARRING_TYPE_OPTIONS, accessoryMaterialOptionsForSubcategory,
+  AESTHETIC_OPTIONS, EARRING_TYPE_OPTIONS, BAG_STYLE_OPTIONS, BAG_HARDWARE_OPTIONS, accessoryMaterialOptionsForSubcategory,
 } from "./types";
 import type { ClosetItem, ItemCategory } from "./types";
 import { getExposure, getVolume } from "./styleAlgorithm";
@@ -45,7 +45,13 @@ export function attributeFieldsFor(category: ItemCategory, subcategoryRaw: strin
   if (category === "accessory") {
     if (sub === "jewelry set") fields.push(f("jewelryType", JEWELRY_TYPE_OPTIONS));
     if (sub.includes("hat")) fields.push(f("hatType", HAT_TYPE_OPTIONS));
-    if (sub.includes("bag")) fields.push(f("size", BAG_SIZE_OPTIONS));
+    if (sub.includes("bag")) {
+      fields.push(
+        f("bagStyle", BAG_STYLE_OPTIONS),
+        f("size", BAG_SIZE_OPTIONS),
+        f("hardware", BAG_HARDWARE_OPTIONS)
+      );
+    }
     fields.push(f("material", accessoryMaterialOptionsForSubcategory(subcategoryRaw)));
   }
   if (category === "bottom") {
@@ -172,6 +178,19 @@ const OPTION_SYNONYMS: Record<string, string[]> = {
   "Chunky Knit": ["chunky"],
   "Kangaroo Pocket": ["kangaroo"],
   Pullover: ["pullover"],
+  Tote: ["tote", "shopper"],
+  Crossbody: ["cross body", "crossbody", "sling"],
+  "Shoulder Bag": ["shoulder bag"],
+  Satchel: ["satchel", "doctor bag"],
+  Hobo: ["hobo", "slouchy bag"],
+  Clutch: ["clutch", "envelope bag", "pouch"],
+  "Bucket Bag": ["bucket bag", "bucket"],
+  Backpack: ["backpack", "rucksack"],
+  "Belt Bag": ["belt bag", "fanny pack", "waist bag"],
+  "Top Handle": ["top handle", "handbag"],
+  "Duffel / Weekender": ["duffel", "duffle", "weekender", "travel bag"],
+  "Mini Bag": ["mini bag", "micro bag"],
+  Mini: ["mini", "micro"],
   "Drawstring Hood": ["drawstring"],
 };
 
@@ -227,10 +246,27 @@ const SHOE_DEFAULTS: Record<string, { heelHeight?: string; toeShape?: string }> 
   "flip flops": { heelHeight: "Flat" },
 };
 
+const BAG_SIZE_BY_STYLE: Record<string, string> = {
+  Tote: "Large",
+  Crossbody: "Small",
+  "Shoulder Bag": "Medium",
+  Satchel: "Medium",
+  Hobo: "Medium",
+  Clutch: "Small",
+  "Bucket Bag": "Medium",
+  Backpack: "Large",
+  "Belt Bag": "Mini",
+  "Top Handle": "Medium",
+  "Duffel / Weekender": "Oversized",
+  "Mini Bag": "Mini",
+  Wristlet: "Mini",
+};
+
 function categoryDefault(
   item: Pick<ClosetItem, "category" | "subcategory">,
   key: string,
-  text: string
+  text: string,
+  known: Record<string, string> = {}
 ): string | null {
   const sub = (item.subcategory || "").trim().toLowerCase();
   const hay = words(text);
@@ -272,6 +308,11 @@ function categoryDefault(
     if (key === "wash" && sub.includes("jean")) return "Medium Wash";
     if (key === "length" && sub.includes("skirt")) return "Mini";
     if (key === "length" && sub.includes("short")) return null;
+  }
+  if (item.category === "accessory" && key === "size" && known.bagStyle) {
+    // A tote is large and a clutch is small; the shape is the best
+    // available stand-in for scale, which a photo alone can't show.
+    return BAG_SIZE_BY_STYLE[known.bagStyle] || null;
   }
   if (item.category === "outerwear") {
     if (key === "closure") return "Zip";
@@ -370,11 +411,14 @@ export function inferMissingAttributes(
       continue;
     }
 
-    const fromWords = field.options.length ? evidenceMatch(field.options, text) : null;
+    // Hardware finish can't be read from words: "Gold" in the text is
+    // usually the item's color, not its hardware.
+    const fromWords =
+      field.options.length && field.key !== "hardware" ? evidenceMatch(field.options, text) : null;
     const value =
       fromWords ||
       pluralityFromCloset(item, field.key, field.options, allItems) ||
-      categoryDefault(item, field.key, text);
+      categoryDefault(item, field.key, text, { ...existing, ...result });
     if (value && (field.options.length === 0 || field.options.includes(value))) {
       result[field.key] = value;
     }

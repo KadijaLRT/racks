@@ -4,9 +4,13 @@ import { useRef, useState } from "react";
 import { X, Pin, PinOff, Trash2, Plus, Shuffle, Camera, Loader2, Sparkles, ChevronDown, Search } from "lucide-react";
 import type { ClosetItem, ItemCategory } from "@/lib/types";
 import { buildLocalItemName } from "@/lib/localNaming";
-import { JEAN_CUT_OPTIONS, RISE_HEIGHT_OPTIONS, SKIRT_LENGTH_OPTIONS, SHORTS_LENGTH_OPTIONS, NECKLINE_OPTIONS, TOP_SILHOUETTE_OPTIONS, DRESS_SILHOUETTE_OPTIONS, SLEEVE_LENGTH_OPTIONS, SLEEVE_OPTIONS, BACK_STYLE_OPTIONS, SUBCATEGORY_SUGGESTIONS, SUBCATEGORY_GROUPS, COLLECTION_OPTIONS, COLOR_OPTIONS, PATTERN_OPTIONS, FABRIC_OPTIONS, WASH_OPTIONS, OUTERWEAR_CLOSURE_OPTIONS, OUTERWEAR_LENGTH_OPTIONS, SHOE_HEEL_OPTIONS, SHOE_TOE_OPTIONS, SHOE_MATERIAL_OPTIONS, accessoryMaterialOptionsForSubcategory, JEWELRY_TYPE_OPTIONS, EARRING_TYPE_OPTIONS, BAG_SIZE_OPTIONS, HAT_TYPE_OPTIONS, MAKEUP_FINISH_OPTIONS, makeupTypeOptionsForSubcategory, makeupShadeOptionsForType, makeupFinishAppliesToTypes, KNIT_TYPE_OPTIONS, HOOD_STYLE_OPTIONS, HOOD_POCKET_OPTIONS, GARMENT_FIT_OPTIONS, SWIMSUIT_TYPE_OPTIONS, SWIMSUIT_TOP_STYLE_OPTIONS, SWIMSUIT_BOTTOM_STYLE_OPTIONS, AESTHETIC_OPTIONS, EXPOSURE_OPTIONS } from "@/lib/types";
+import { JEAN_CUT_OPTIONS, RISE_HEIGHT_OPTIONS, SKIRT_LENGTH_OPTIONS, SHORTS_LENGTH_OPTIONS, NECKLINE_OPTIONS, TOP_SILHOUETTE_OPTIONS, DRESS_SILHOUETTE_OPTIONS, SLEEVE_LENGTH_OPTIONS, SLEEVE_OPTIONS, BACK_STYLE_OPTIONS, SUBCATEGORY_SUGGESTIONS, SUBCATEGORY_GROUPS, COLLECTION_OPTIONS, COLOR_OPTIONS, PATTERN_OPTIONS, FABRIC_OPTIONS, WASH_OPTIONS, OUTERWEAR_CLOSURE_OPTIONS, OUTERWEAR_LENGTH_OPTIONS, SHOE_HEEL_OPTIONS, SHOE_TOE_OPTIONS, SHOE_MATERIAL_OPTIONS, accessoryMaterialOptionsForSubcategory, JEWELRY_TYPE_OPTIONS, EARRING_TYPE_OPTIONS, BAG_SIZE_OPTIONS,
+  BAG_STYLE_OPTIONS,
+  BAG_HARDWARE_OPTIONS,
+  BAG_DESIGN_OPTIONS,
+  BAG_BRAND_OPTIONS, HAT_TYPE_OPTIONS, MAKEUP_FINISH_OPTIONS, makeupTypeOptionsForSubcategory, makeupShadeOptionsForType, makeupFinishAppliesToTypes, KNIT_TYPE_OPTIONS, HOOD_STYLE_OPTIONS, HOOD_POCKET_OPTIONS, GARMENT_FIT_OPTIONS, SWIMSUIT_TYPE_OPTIONS, SWIMSUIT_TOP_STYLE_OPTIONS, SWIMSUIT_BOTTOM_STYLE_OPTIONS, AESTHETIC_OPTIONS, EXPOSURE_OPTIONS } from "@/lib/types";
 import { CATEGORIES, categoryLabel } from "@/lib/categories";
-import { fileToResizedDataUrl, resizeDataUrlForAI } from "@/lib/image";
+import { fileToResizedDataUrl, resizeDataUrlForAI, resizeDataUrlForAIByCategory } from "@/lib/image";
 import { extractDominantColorTag, isLikelySolidColor } from "@/lib/dominantColor";
 import { computeHistoryTagSuggestions } from "@/lib/localTagHistory";
 import { inferSubcategoryFromText } from "@/lib/localSubcategory";
@@ -170,7 +174,7 @@ export default function ItemEditSheet({
       // longer describe what's actually in the picture. Non-blocking:
       // the new photo still saves even if this call fails.
       try {
-        const aiImage = await resizeDataUrlForAI(dataUrl);
+        const aiImage = await resizeDataUrlForAIByCategory(dataUrl, category);
         const res = await fetch("/api/tag-item", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -212,7 +216,7 @@ export default function ItemEditSheet({
     setRetagItemError("");
     setRetagItemSuccess(false);
     try {
-      const aiImage = await resizeDataUrlForAI(image);
+      const aiImage = await resizeDataUrlForAIByCategory(image, category);
       const res = await fetch("/api/tag-item", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1095,9 +1099,40 @@ export default function ItemEditSheet({
                       {subcategory.toLowerCase().includes("hat")
                         ? renderAttributeRow("Hat Type", "hatType", HAT_TYPE_OPTIONS)
                         : null}
-                      {subcategory.toLowerCase().includes("bag")
-                        ? renderAttributeRow("Size", "size", BAG_SIZE_OPTIONS)
-                        : null}
+                      {subcategory.toLowerCase().includes("bag") ? (
+                        <>
+                          <div>
+                            <p className="text-[11px] text-stone-400 mb-1.5">Brand</p>
+                            <input
+                              list="bag-brand-options"
+                              value={tags?.brand || ""}
+                              onChange={(e) =>
+                                setTags((prev) => ({ ...(prev || {}), brand: e.target.value }))
+                              }
+                              onBlur={(e) => {
+                                const cleaned = normalizeTagValue("brand", e.target.value);
+                                setTags((prev) => {
+                                  const next = { ...(prev || {}) };
+                                  if (cleaned) next.brand = cleaned;
+                                  else delete next.brand;
+                                  return next;
+                                });
+                              }}
+                              placeholder="e.g. Coach, Michael Kors, or leave blank"
+                              className="w-full rounded-xl border border-clay-100 px-3 py-1.5 text-xs bg-white"
+                            />
+                            <datalist id="bag-brand-options">
+                              {BAG_BRAND_OPTIONS.map((b) => (
+                                <option key={b} value={b} />
+                              ))}
+                            </datalist>
+                          </div>
+                          {renderAttributeRow("Bag Style", "bagStyle", BAG_STYLE_OPTIONS)}
+                          {renderAttributeRow("Size", "size", BAG_SIZE_OPTIONS)}
+                          {renderAttributeRow("Design", "pattern", BAG_DESIGN_OPTIONS)}
+                          {renderAttributeRow("Hardware", "hardware", BAG_HARDWARE_OPTIONS)}
+                        </>
+                      ) : null}
                       {renderAttributeRow(
                         "Material",
                         "material",
@@ -1218,7 +1253,9 @@ export default function ItemEditSheet({
                       {subcategory.toLowerCase() === "earrings" ||
                       parseAttributeValues(tags?.jewelryType).includes("Earrings")
                         ? renderAttributeRow("Earring Type", "earringType", EARRING_TYPE_OPTIONS)
-                        : renderAttributeRow("Pattern", "pattern", PATTERN_OPTIONS)}
+                        : subcategory.toLowerCase().includes("bag")
+                          ? null
+                          : renderAttributeRow("Pattern", "pattern", PATTERN_OPTIONS)}
                       {category !== "shoes" && category !== "accessory"
                         ? renderAttributeRow("Fabric", "fabric", FABRIC_OPTIONS)
                         : null}

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { groqChat, parseGroqJson, buildTextMessage } from "@/lib/groq";
 import { sanitizeGroqText, sanitizeGroqPayload, formatTagsCompact } from "@/lib/groqSanitizer";
+import { estimateFormality } from "@/lib/localLookBuilder";
+import { analyzeOccasion, occasionConflict, scoreOutfitFit } from "@/lib/occasionProfile";
 import type { ClosetItem, WigItem, HairProfile, ColorProfile, UserMeasurements } from "@/lib/types";
 
 interface GenerateLookRequestBody {
@@ -24,6 +26,7 @@ interface GenerateLookRequestBody {
 }
 
 interface GeneratedLookResponse {
+  eventRead?: string;
   itemIds: string[];
   hairstyle: string;
   makeup: string;
@@ -36,6 +39,7 @@ interface GeneratedLookResponse {
 }
 
 const FALLBACK_LOOK: GeneratedLookResponse = {
+  eventRead: "",
   itemIds: [],
   hairstyle: "",
   makeup: "",
@@ -121,6 +125,31 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // The dress-code brief: what the event actually calls for, computed
+    // locally so it does not depend on the model's guess about it.
+    const profile = analyzeOccasion(prompt);
+    const bandText = profile.band
+      ? profile.band.min === profile.band.max
+        ? `${profile.band.min}`
+        : `${profile.band.min}-${profile.band.max}`
+      : "";
+    const dressCodeBrief = profile.band
+      ? `DRESS CODE BRIEF (this is the most important input, it outranks mood, favorites and neglected pieces):
+- Event type: ${profile.label}
+- Every non-accessory piece must have a dress level of ${bandText} (scale: 1 loungewear/athletic, 2 casual, 3 smart casual, 4 business/elevated, 5 formal). Each closet item below lists its level.
+- Never choose an item marked "WRONG FOR THIS EVENT".
+${profile.guidance.map((g) => `- ${g}`).join("\n")}${
+          profile.preferColors.length > 0
+            ? `\n- Colors that suit this event: ${profile.preferColors.join(", ")}.`
+            : ""
+        }${
+          profile.avoidColors.length > 0
+            ? `\n- Colors to avoid for this event: ${profile.avoidColors.join(", ")}.`
+            : ""
+        }
+- If the closet has nothing at the right level for a slot, choose the closest available and say so honestly in "weaknesses" instead of pretending it fits.`
+      : "";
+
     // Every string field pulled from closet items is sanitized before
     // being interpolated into the prompt sent to Groq.
     const closetList = wearable
@@ -130,9 +159,15 @@ export async function POST(req: NextRequest) {
           name: i?.name || "",
           tags: i?.tags || {},
         });
-        return `- id:${i.id} | ${safe.category} | ${safe.name} | ${JSON.stringify(
+        const level = estimateFormality(i);
+        const conflict = profile.band || profile.avoidText || profile.avoidColors.length > 0
+          ? occasionConflict(i, profile)
+          : null;
+        return `- id:${i.id} | ${safe.category} | ${safe.name} | dress level ${level}/5 | ${JSON.stringify(
           safe.tags
-        )} | worn ${i?.timesWorn ?? 0}×${i?.pinned ? " | PINNED FAVORITE" : ""}`;
+        )} | worn ${i?.timesWorn ?? 0}×${i?.pinned ? " | PINNED FAVORITE" : ""}${
+          conflict ? " | WRONG FOR THIS EVENT" : ""
+        }`;
       })
       .join("\n");
 
@@ -223,8 +258,11 @@ Apply ONLY what this change requires, keep everything else the same unless the c
         : ""
     }. You ONLY use items from the user's actual closet list below, never invent items. Each item shows how many times it's been worn ("worn N×"), where it fits naturally, favor reviving a neglected piece (worn 0-1×) over always reaching for the most-worn items, and mention it in your reasoning if you do. Don't force a neglected item if nothing neglected fits. Items marked "PINNED FAVORITE" get modest extra weight when they reasonably fit, never forced in otherwise. You may recommend a wig from the wig list as the hairstyle if it fits better than natural hair, otherwise suggest a hairstyle achievable with described natural hair. If the user owns specific makeup products, build the makeup look from those by name; only describe a generic look if they own none.
 
+Before choosing anything, work out what the event really demands: who will be there, indoors or outdoors, time of day, how much standing or walking, and the expected dress code. Real events have real norms (nothing white at someone else's wedding, somber and modest for a funeral, conservative for an interview, comfortable shoes for a festival). Treat the occasion as the primary constraint; mood, favorites and neglected pieces are tiebreakers only.
+
 Return ONLY a JSON object with this exact shape:
 {
+  "eventRead": "one sentence naming the event and its dress code, e.g. 'Funeral: somber, modest, dark muted colors'",
   "itemIds": [closet item id strings you selected, ONLY from "Closet items available", NEVER from the makeup list. Pick a coherent set: top+bottom, a dress, or a "set" (standalone, never paired with an extra top or bottom), plus shoes, plus 0-2 accessories. Never two items of the same category unless layering makes sense],
   "hairstyle": "short description, name the wig if used",
   "makeup": "short description, name owned products if any, otherwise generic",
@@ -242,6 +280,8 @@ Return ONLY a JSON object with this exact shape:
 
     const userPrompt = `Occasion / request: "${prompt}"
 ${mood ? `Desired feeling: "${mood}"` : ""}
+
+${dressCodeBrief}
 
 ${weatherContext}
 ${energyContext}
@@ -279,8 +319,25 @@ ${refinementContext ? "Apply the requested change to the existing look." : "Buil
       maxCompletionTokens: 2200,
     };
 
-    let content = await groqChat(messages, callOpts);
-    let parsed = parseGroqJson<GeneratedLookResponse>(content, FALLBACK_LOOK);
+    const validIds = new Set(wearable.map((i) => i.id));
+    const byId = new Map(wearable.map((i) => [i.id, i]));
+
+    // Drops ids the model invented or took from the makeup list, so a
+    // hallucinated id can never reach the screen as a blank card.
+    function clean(r: GeneratedLookResponse): GeneratedLookResponse {
+      const ids = Array.isArray(r.itemIds) ? r.itemIds : [];
+      return { ...r, itemIds: [...new Set(ids.filter((id) => validIds.has(id)))] };
+    }
+
+    async function ask(extra?: string, temperature?: number): Promise<GeneratedLookResponse> {
+      const msgs = extra
+        ? [...messages, buildTextMessage("user", extra)]
+        : messages;
+      const content = await groqChat(msgs, temperature ? { ...callOpts, temperature } : callOpts);
+      return clean(parseGroqJson<GeneratedLookResponse>(content, FALLBACK_LOOK));
+    }
+
+    let parsed = await ask();
 
     // We've already confirmed above that the closet has enough clean,
     // categorized items to physically build an outfit, so an empty
@@ -290,12 +347,11 @@ ${refinementContext ? "Apply the requested change to the existing look." : "Buil
     // higher temperature resolves this most of the time; if it's still
     // empty after that, say so plainly instead of returning an empty
     // array that the frontend can only describe generically.
-    if (!Array.isArray(parsed.itemIds) || parsed.itemIds.length === 0) {
-      content = await groqChat(messages, { ...callOpts, temperature: 0.75 });
-      parsed = parseGroqJson<GeneratedLookResponse>(content, FALLBACK_LOOK);
+    if (parsed.itemIds.length === 0) {
+      parsed = await ask(undefined, 0.75);
     }
 
-    if (!Array.isArray(parsed.itemIds) || parsed.itemIds.length === 0) {
+    if (parsed.itemIds.length === 0) {
       return NextResponse.json(
         {
           error:
@@ -305,16 +361,67 @@ ${refinementContext ? "Apply the requested change to the existing look." : "Buil
       );
     }
 
+    // Check the model's answer against the event instead of trusting it.
+    // Skipped for refinements: "Dressier" or "More casual" are explicit
+    // requests to move away from the original event level.
+    let fit = null as ReturnType<typeof scoreOutfitFit> | null;
+    const fitOf = (r: GeneratedLookResponse) =>
+      scoreOutfitFit(
+        r.itemIds.map((id) => byId.get(id)).filter((i): i is ClosetItem => !!i),
+        profile,
+        estimateFormality
+      );
+    if (!previousLook && (profile.band || profile.avoidText || profile.avoidColors.length > 0)) {
+      fit = fitOf(parsed);
+      if (fit.problems.length > 0) {
+        const retry = await ask(
+          `That outfit does not suit this event. Problems: ${fit.problems.join("; ")}. Rebuild the look so every non-accessory piece sits at dress level ${bandText || "appropriate for the event"} and none is marked WRONG FOR THIS EVENT. Return the same JSON shape.`,
+          0.4
+        ).catch(() => null);
+        if (retry && retry.itemIds.length > 0) {
+          const retryFit = fitOf(retry);
+          if (retryFit.score >= fit.score) {
+            parsed = retry;
+            fit = retryFit;
+          }
+        }
+      }
+      // Still clearly wrong after one correction: report a mismatch so the
+      // app builds the look locally, where the dress code is enforced
+      // piece by piece, rather than showing a look that misses the event.
+      if (fit && fit.score <= 2) {
+        return NextResponse.json(
+          {
+            error: `The AI's picks didn't fit a ${profile.label || "this"} dress code (${fit.problems[0]}).`,
+            code: "occasion-mismatch",
+          },
+          { status: 422 }
+        );
+      }
+    }
+
+    // The model's own occasionFit score is capped by the measured fit so
+    // a mismatched outfit can't claim 5/5 for the event.
+    const scores = { ...(parsed.scores || {}) };
+    if (fit) {
+      scores.occasionFit = Math.min(Number(scores.occasionFit) || fit.score, fit.score);
+    }
+    const weaknesses = [...(parsed.weaknesses || [])];
+    if (fit && fit.problems.length > 0) {
+      weaknesses.push(`Event fit: ${fit.problems[0]}`);
+    }
+
     return NextResponse.json({
       itemIds: parsed.itemIds || [],
       hairstyle: parsed.hairstyle || "",
       makeup: parsed.makeup || "",
       reasoning: parsed.reasoning || "",
-      scores: parsed.scores || {},
+      scores,
       overallLabel: parsed.overallLabel || "",
       overallStars: parsed.overallStars || 0,
       strengths: parsed.strengths || [],
-      weaknesses: parsed.weaknesses || [],
+      weaknesses,
+      dressCode: parsed.eventRead || "",
     });
   } catch (err) {
     console.error("generate-look failed:", err instanceof Error ? err.message : err);

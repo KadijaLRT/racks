@@ -76,6 +76,7 @@ interface GeneratedResult {
   overallStars: number;
   strengths: string[];
   weaknesses: string[];
+  dressCode?: string;
 }
 
 export default function LooksPage() {
@@ -206,6 +207,7 @@ export default function LooksPage() {
     setLoading(true);
     setError("");
     setSavedMessage("");
+    let eventMismatch = false;
     try {
       const res = await fetch("/api/generate-look", {
         method: "POST",
@@ -227,7 +229,10 @@ export default function LooksPage() {
         }),
       });
       const data = await res.json().catch(() => ({}));
-      if (data?.error) throw new Error(data.error);
+      if (data?.error) {
+        eventMismatch = data?.code === "occasion-mismatch";
+        throw new Error(data.error);
+      }
       if (!Array.isArray(data?.itemIds) || data.itemIds.length === 0) {
         throw new Error("Couldn't put together a look from what's in your closet yet.");
       }
@@ -245,7 +250,11 @@ export default function LooksPage() {
       // look (not a refinement of an existing one) fall back to the
       // local builder, and say so plainly.
       if (!instruction && buildWithoutAI()) {
-        setSavedMessage("The AI wasn't available, so this look was built locally from your closet.");
+        setSavedMessage(
+          eventMismatch
+            ? "The AI's picks didn't fit this event's dress code, so this look was built locally to match it."
+            : "The AI wasn't available, so this look was built locally from your closet."
+        );
       } else {
         setError(aiMessage);
       }
@@ -857,6 +866,9 @@ export default function LooksPage() {
               );
             })()}
 
+            {result.dressCode ? (
+              <p className="text-xs font-medium text-emerald-800">{result.dressCode}</p>
+            ) : null}
             <p className="text-sm text-stone-600">{result.reasoning}</p>
 
             {result.hairstyle ? (

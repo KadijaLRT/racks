@@ -11,6 +11,13 @@ import type { ClosetItem, UserAffinities } from "./types";
 import { colorsOf, isColorCompatibleWithAll } from "./colorCompatibility";
 import { affinityWeightMultiplier } from "./userAffinities";
 import {
+  analyzeOccasion,
+  occasionConflict,
+  matchesOccasionPreference,
+  scoreOutfitFit,
+  type OccasionProfile,
+} from "./occasionProfile";
+import {
   getExposure,
   getVolume,
   getAesthetics,
@@ -90,39 +97,99 @@ const FORMALITY_KEYWORDS: { level: number; keywords: string[] }[] = [
     level: 1,
     keywords: [
       "sweatsuit", "tracksuit", "loungewear", "hoodie", "sweatshirt",
-      "sweatpants", "pajama", "robe", "slides", "house slipper",
+      "sweatpants", "sweat pants", "pajama", "robe", "slides", "house slipper",
+      "slipper", "legging", "jogger", "biker short", "sports bra", "track pant",
+      "athletic", "activewear", "running shoe", "training shoe", "gym",
     ],
   },
   {
     level: 2,
     keywords: [
       "t-shirt", "tee", "tank", "jeans", "denim", "shorts", "sneaker",
-      "flip-flop", "graphic", "cargo", "bralette", "camisole",
+      "flip-flop", "flip flop", "graphic", "cargo", "bralette", "camisole",
+      "cami", "crop top", "tube top", "bomber", "denim jacket", "puffer",
+      "parka", "backpack", "belt bag", "fanny pack", "combat boot", "skort",
+      "romper", "jumpsuit", "sundress", "mini skirt", "baseball cap",
     ],
   },
   {
     level: 3,
     keywords: [
-      "blouse", "sweater", "cardigan", "midi", "flats", "loafer",
-      "chino", "polo", "henley", "sandal", "espadrille", "sundress",
+      "blouse", "sweater", "cardigan", "midi", "flats", "flat", "loafer",
+      "chino", "polo", "henley", "sandal", "espadrille", "bodysuit", "wedge",
+      "mule", "ballet flat", "turtleneck", "tunic", "maxi", "shirt dress",
+      "leather jacket", "crossbody", "tote", "ankle boot", "halter top",
+      "wrap top",
     ],
   },
   {
     level: 4,
     keywords: [
-      "blazer", "trouser", "button-down", "button down", "heel",
-      "pencil skirt", "dress pant", "wrap dress", "oxford", "structured",
-      "bootie", "coat",
+      "blazer", "trouser", "button-down", "button down", "button-up", "heel",
+      "pump", "pencil skirt", "dress pant", "dress pants", "slacks",
+      "wrap dress", "oxford", "structured", "bootie", "coat", "trench",
+      "peacoat", "slip dress", "corset", "pleated", "clutch", "kitten heel",
+      "block heel", "pearl", "tailored", "sheath", "bodycon",
     ],
   },
   {
     level: 5,
     keywords: [
       "gown", "cocktail", "evening", "tuxedo", "stiletto", "sequin",
-      "silk", "satin", "ball gown", "formal", "tulle",
+      "ball gown", "formal", "tulle", "evening bag", "maxi gown",
+      "black tie", "strappy heel", "rhinestone", "beaded",
     ],
   },
 ];
+
+// Tag keys that say nothing about how dressy a piece is (and whose values
+// can collide with keywords, e.g. a "Silver" color or a "Coach" brand).
+const FORMALITY_IGNORED_TAG_KEYS = new Set([
+  "color", "brand", "size", "pattern", "season", "shade", "finish",
+  "exposure", "volume", "fit", "hardware", "neckline", "sleeveLength",
+]);
+
+// Whole-word match (with simple plural tolerance) so "informal" never
+// reads as "formal", "steel" never reads as "tee", and "tankini" never
+// reads as "tank".
+const keywordRegexCache = new Map<string, RegExp>();
+function hasWord(text: string, keyword: string): boolean {
+  let re = keywordRegexCache.get(keyword);
+  if (!re) {
+    const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "[\\s-]+");
+    re = new RegExp(`(^|[^a-z])${escaped}(s|es)?($|[^a-z])`, "i");
+    keywordRegexCache.set(keyword, re);
+  }
+  return re.test(text);
+}
+
+function levelFromText(text: string): number | null {
+  let best: number | null = null;
+  for (const { level, keywords } of FORMALITY_KEYWORDS) {
+    if (keywords.some((k) => hasWord(text, k))) best = level;
+  }
+  return best;
+}
+
+// Reads an explicit formality / occasion tag if the person (or the tagger)
+// set one. Highest-trust signal: it overrides keyword guessing entirely.
+function explicitFormality(item: ClosetItem): number | null {
+  const raw = String(item?.tags?.formality || "").toLowerCase().trim();
+  if (!raw) return null;
+  const n = Number(raw);
+  if (Number.isFinite(n) && n >= 1 && n <= 5) return Math.round(n);
+  if (/athleisure|lounge|activewear|sporty/.test(raw)) return 1;
+  if (/smart casual|business casual|dressy casual/.test(raw)) return 3;
+  if (/black tie|formal|dressy|evening|gala/.test(raw)) return 5;
+  if (/business|professional|elevated|work/.test(raw)) return 4;
+  if (/casual|everyday|relaxed/.test(raw)) return 2;
+  return null;
+}
+
+// Fabrics that read dressier on a garment (not on, say, a tote bag).
+const DRESSY_FABRIC = /(^|[^a-z])(silk|satin|velvet|chiffon|lace|sequin|sequined|beaded|metallic|brocade|taffeta)($|[^a-z])/i;
+// Markers that cap a piece at casual no matter what else it says.
+const CASUAL_CAP = /(^|[^a-z])(distressed|ripped|oversized tee|graphic|washed|raw hem|athletic|sporty)($|[^a-z])/i;
 
 function textOf(item: ClosetItem): string {
   return [
@@ -135,18 +202,46 @@ function textOf(item: ClosetItem): string {
 }
 
 export function estimateFormality(item: ClosetItem): number {
-  const text = textOf(item);
-  let best = 2; // default assumption: casual, the most common everyday case
-  for (const { level, keywords } of FORMALITY_KEYWORDS) {
-    if (keywords.some((k) => text.includes(k))) {
-      best = level;
-    }
-  }
+  const explicit = explicitFormality(item);
+  if (explicit !== null) return explicit;
+
+  // What the piece IS (its subcategory and name) outranks incidental
+  // tag values like a fabric or an aesthetic, so a "satin tank" is still
+  // a tank and a "silk" tag can't turn a hoodie into a gown.
+  const primary = `${item?.subcategory || ""} ${item?.name || ""}`.toLowerCase();
+  const secondary = Object.entries(item?.tags || {})
+    .filter(([key]) => !FORMALITY_IGNORED_TAG_KEYS.has(key))
+    .map(([, value]) => String(value ?? ""))
+    .join(" ")
+    .toLowerCase();
+
+  let level = levelFromText(primary);
+  if (level === null) level = levelFromText(secondary);
+  let best = level ?? 2; // default assumption: casual, the most common everyday case
+
   // Category-level nudges for items with no matching keyword at all,
   // so a plain unlabeled dress doesn't default all the way down to 2.
-  if (item?.category === "dress" && best === 2) best = 3;
-  if (item?.category === "outerwear" && best === 2) best = 3;
-  return best;
+  if (level === null) {
+    if (item?.category === "dress") best = 3;
+    if (item?.category === "outerwear") best = 3;
+    if (item?.category === "set") best = 2;
+  }
+
+  // Dressy fabric lifts garments one level (never shoes/accessories,
+  // which carry their own formality), casual markers cap at 2.
+  const wearsFabric = ["dress", "top", "bottom", "set", "outerwear"].includes(item?.category);
+  if (wearsFabric && best < 5 && DRESSY_FABRIC.test(`${primary} ${secondary}`)) best += 1;
+  if (best > 2 && CASUAL_CAP.test(primary)) best = 2;
+
+  // An occasion tag (e.g. "Work, Formal") is a trustworthy hint of the
+  // top of the range when no explicit formality was set.
+  const occasionTag = String(item?.tags?.occasion || "").toLowerCase();
+  if (occasionTag) {
+    if (/formal|wedding|gala|cocktail|evening/.test(occasionTag)) best = Math.max(best, 4);
+    else if (/work|office|business/.test(occasionTag)) best = Math.max(best, 3);
+  }
+
+  return Math.max(1, Math.min(5, best));
 }
 
 // 1 = warm-weather/lightweight (linen, tank, shorts, sandals),
@@ -197,48 +292,16 @@ export function vibeLabelForFormality(avgFormality: number): string {
 
 // --- Occasion → target formality ------------------------------------
 
-const OCCASION_BANDS: { keywords: string[]; min: number; max: number }[] = [
-  { keywords: ["gym", "workout", "run", "yoga", "hike"], min: 1, max: 1 },
-  {
-    keywords: [
-      "coffee", "errand", "casual", "comfy", "comfortable", "lounge",
-      "weekend", "grocery", "chores", "relax",
-    ],
-    min: 1,
-    max: 2,
-  },
-  {
-    keywords: ["brunch", "lunch", "shopping", "walk", "park", "museum"],
-    min: 2,
-    max: 3,
-  },
-  { keywords: ["work", "office", "meeting", "interview", "presentation"], min: 3, max: 4 },
-  { keywords: ["date", "dinner", "drinks"], min: 3, max: 4 },
-  { keywords: ["party", "night out", "club", "birthday"], min: 3, max: 5 },
-  {
-    keywords: ["wedding", "gala", "formal", "black tie", "cocktail party", "prom"],
-    min: 4,
-    max: 5,
-  },
-];
-
 /**
- * Maps a free-text occasion phrase to a [min, max] formality band via
- * simple keyword matching, no NLP. If nothing matches (or no occasion
- * was given), returns null, meaning "pick any coherent band" rather
- * than a specific target.
+ * Maps a free-text occasion phrase to a [min, max] formality band. The
+ * vocabulary and rules live in occasionProfile.ts so the AI route and
+ * this builder agree on what an event calls for. Returns null when no
+ * known event is named, meaning "pick any coherent band".
  */
 export function occasionToFormalityBand(
   occasion: string | undefined | null
 ): { min: number; max: number } | null {
-  if (!occasion) return null;
-  const text = occasion.toLowerCase();
-  for (const band of OCCASION_BANDS) {
-    if (band.keywords.some((k) => text.includes(k))) {
-      return { min: band.min, max: band.max };
-    }
-  }
-  return null;
+  return analyzeOccasion(occasion).band;
 }
 
 // --- Metal-tone coordination -----------------------------------------
@@ -270,6 +333,12 @@ export interface LearnedPreferences {
   formalityCenter: number | null;
 }
 
+/**
+ * Builds several candidate outfits and keeps the one that best fits the
+ * event. A single random draw can land on a mismatched piece even when
+ * the pools are filtered, so we draw a handful and score each against
+ * the same dress-code profile the AI route uses.
+ */
 export function buildLocalLook(
   items: ClosetItem[],
   occasion?: string,
@@ -277,6 +346,52 @@ export function buildLocalLook(
   energy?: string,
   preferences?: LearnedPreferences,
   affinities?: UserAffinities | null
+): LocalLookResult | null {
+  const profile = analyzeOccasion(occasion);
+  const attempts = profile.band || profile.avoidText || profile.avoidColors.length > 0 ? 12 : 1;
+  const byId = new Map((items || []).map((i) => [i.id, i]));
+
+  let best: { result: LocalLookResult; score: number; lean: number; problems: string[] } | null = null;
+  // Among equally valid outfits, formal events lean toward the dressy end
+  // of the band (a cocktail dress over trousers and a button-down for a
+  // wedding), while other events aim for the middle of it.
+  const leanTarget = profile.band
+    ? profile.band.min >= 4
+      ? profile.band.max
+      : (profile.band.min + profile.band.max) / 2
+    : 0;
+  for (let n = 0; n < attempts; n++) {
+    const candidate = buildOnce(items, occasion, context, energy, preferences, affinities, profile);
+    if (!candidate) continue;
+    const picked = candidate.itemIds.map((id) => byId.get(id)).filter((i): i is ClosetItem => !!i);
+    const fit = scoreOutfitFit(picked, profile, estimateFormality);
+    const core = picked.filter((i) => i.category !== "accessory");
+    const avg = core.length
+      ? core.reduce((sum, i) => sum + estimateFormality(i), 0) / core.length
+      : leanTarget;
+    const lean = profile.band ? Math.abs(avg - leanTarget) : 0;
+    if (!best || fit.score > best.score || (fit.score === best.score && lean < best.lean)) {
+      best = { result: candidate, score: fit.score, lean, problems: fit.problems };
+    }
+  }
+  if (!best) return null;
+
+  // Be honest when the closet can't fully meet the dress code, instead of
+  // presenting a stretch as a perfect match.
+  if (profile.band && best.problems.length > 0) {
+    best.result.reasoning += ` Closest fit to a ${profile.label || "this"} dress code from what's clean in your closet; ${best.problems[0]}.`;
+  }
+  return best.result;
+}
+
+function buildOnce(
+  items: ClosetItem[],
+  occasion: string | undefined,
+  context: string[] | undefined,
+  energy: string | undefined,
+  preferences: LearnedPreferences | undefined,
+  affinities: UserAffinities | null | undefined,
+  profile: OccasionProfile
 ): LocalLookResult | null {
   let wearable = (items || []).filter(
     (i) => i?.laundryStatus === "clean" && i?.category !== "makeup" && i?.closetStatus !== "store"
@@ -303,10 +418,10 @@ export function buildLocalLook(
 
   const contextText = (context || []).join(" ").toLowerCase();
   const avoidOpenToe = /chilly|rain/.test(contextText);
-  const preferComfortShoes = /walking|chilly|rain/.test(contextText);
+  const preferComfortShoes = /walking|chilly|rain/.test(contextText) || profile.comfortShoes;
   const forceOuterwear = /chilly|rain/.test(contextText);
 
-  const targetBand = occasionToFormalityBand(occasion);
+  const targetBand = profile.band ? { ...profile.band } : null;
 
   // If the occasion didn't map to a known band, pick a random target
   // level weighted toward whatever's actually well-represented in the
@@ -347,7 +462,7 @@ export function buildLocalLook(
   // center still keeps the outfit internally consistent (no mixing
   // sandals with a puffer) even with nothing explicit stated.
   const occasionAndContextText = `${occasion || ""} ${(context || []).join(" ")}`.toLowerCase();
-  const seasonTarget = /summer|beach|hot|vacation|tropical/.test(occasionAndContextText)
+  const seasonTarget = profile.season === 1 || /summer|beach|hot|vacation|tropical/.test(occasionAndContextText)
     ? 1
     : /winter|cold|holiday|snow/.test(occasionAndContextText)
     ? 3
@@ -370,18 +485,38 @@ export function buildLocalLook(
     return f >= band.min && f <= band.max && s >= seasonBand.min && s <= seasonBand.max;
   };
 
-  // Falls back to the closest-formality items outside the band rather
-  // than failing outright, if the strict band leaves a required
-  // category empty (e.g. only one pair of shoes and it doesn't match).
+  // Tiered fallback so the event always wins over randomness: (1) inside
+  // the band AND free of anything wrong for this event, (2) inside the
+  // band, (3) free of event conflicts and closest to the band, (4)
+  // closest to the band. Never fails outright just because a closet is
+  // small, it just degrades one tier at a time.
+  const bandCenter = (band.min + band.max) / 2;
+  const byDistance = (list: ClosetItem[]) =>
+    [...list].sort(
+      (a, b) =>
+        Math.abs(estimateFormality(a) - bandCenter) - Math.abs(estimateFormality(b) - bandCenter)
+    );
+  const noConflict = (i: ClosetItem) => !occasionConflict(i, profile);
   function candidatesFor(category: string): ClosetItem[] {
     const all = wearable.filter((i) => i?.category === category);
     const strict = all.filter(inBand);
-    if (strict.length > 0) return strict;
-    return [...all].sort(
-      (a, b) =>
-        Math.abs(estimateFormality(a) - (band.min + band.max) / 2) -
-        Math.abs(estimateFormality(b) - (band.min + band.max) / 2)
-    );
+    const strictClean = strict.filter(noConflict);
+    let pool: ClosetItem[];
+    if (strictClean.length > 0) pool = strictClean;
+    else if (strict.length > 0) pool = strict;
+    else {
+      const clean = all.filter(noConflict);
+      const nearest = byDistance(clean.length > 0 ? clean : all);
+      // Keep only the closest tier of formality, not the whole list.
+      const bestGap = nearest.length
+        ? Math.abs(estimateFormality(nearest[0]) - bandCenter)
+        : 0;
+      pool = nearest.filter((i) => Math.abs(estimateFormality(i) - bandCenter) <= bestGap + 0.5);
+    }
+    // Soft preference: when anything suits the event especially well
+    // (pastels for a shower, activewear for a workout), narrow to those.
+    const liked = pool.filter((i) => matchesOccasionPreference(i, profile));
+    return liked.length > 0 ? liked : pool;
   }
 
   const dresses = candidatesFor("dress");
@@ -598,7 +733,7 @@ export function buildLocalLook(
     ? " Leaned structured and sharp for extra presence."
     : "";
   const reasoning = targetBand
-    ? `${base} Kept everything at a similar, ${occasion ? "occasion-appropriate" : "matching"} formality level.${energyNote}`
+    ? `${base} Dressed for ${profile.label || "the occasion"}: every piece sits at the right dress level for it.${energyNote}`
     : `${base}${energyNote}`;
 
   return {

@@ -15,15 +15,13 @@ import { inferMissingAttributes } from "@/lib/attributeSchema";
 import { normalizeTags, tagsNeedNormalizing } from "@/lib/tagNormalizer";
 import { closetStore, appSettingsStore } from "@/lib/storage";
 import type { ClosetItem, ItemCategory } from "@/lib/types";
-import { SUBCATEGORY_SUGGESTIONS, SUBCATEGORY_GROUPS, COLLECTION_OPTIONS, SMART_COLLECTIONS, COLOR_OPTIONS, PATTERN_OPTIONS, FABRIC_OPTIONS } from "@/lib/types";
+import { SUBCATEGORY_SUGGESTIONS, SUBCATEGORY_GROUPS, COLLECTION_OPTIONS, COLOR_OPTIONS, PATTERN_OPTIONS, FABRIC_OPTIONS } from "@/lib/types";
 import { CATEGORIES } from "@/lib/categories";
 
 export default function ClosetPage() {
   const [items, setItems] = useState<ClosetItem[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [filter, setFilter] = useState<ItemCategory | "all">("all");
-  const [browseMode, setBrowseMode] = useState<"category" | "collection">("category");
-  const [collectionFilter, setCollectionFilter] = useState<string>("all");
   const [groupBy, setGroupBy] = useState("subcategory");
   const [search, setSearch] = useState("");
   const [pendingCategory, setPendingCategory] = useState<ItemCategory>("top");
@@ -184,30 +182,9 @@ export default function ClosetPage() {
 
   const filteredItems = useMemo(() => {
     const query = search.trim().toLowerCase();
-    // Most Worn is computed live (top third by wear count, min 1 wear)
-    // rather than a fixed threshold, so it scales sensibly whether
-    // someone owns 20 items or 200.
-    const mostWornIds = (() => {
-      if (browseMode !== "collection" || collectionFilter !== "Most Worn") return null;
-      const worn = (items || []).filter((i) => (i.timesWorn || 0) > 0);
-      const sorted = [...worn].sort((a, b) => (b.timesWorn || 0) - (a.timesWorn || 0));
-      const cutoff = Math.max(1, Math.ceil(sorted.length / 3));
-      return new Set(sorted.slice(0, cutoff).map((i) => i.id));
-    })();
-
     return (items || []).filter((item) => {
       if (dirtyOnly && item?.laundryStatus !== "dirty") return false;
-      if (browseMode === "category") {
-        if (filter !== "all" && item?.category !== filter) return false;
-      } else if (collectionFilter !== "all") {
-        if (collectionFilter === "Most Worn") {
-          if (!mostWornIds?.has(item.id)) return false;
-        } else if (collectionFilter === "Favorites") {
-          if (!item.pinned) return false;
-        } else if (!(item.collections || []).includes(collectionFilter)) {
-          return false;
-        }
-      }
+      if (filter !== "all" && item?.category !== filter) return false;
       if (!query) return true;
       const haystack = [
         item?.name || "",
@@ -218,7 +195,7 @@ export default function ClosetPage() {
         .toLowerCase();
       return haystack.includes(query);
     });
-  }, [items, filter, browseMode, collectionFilter, search, dirtyOnly]);
+  }, [items, filter, search, dirtyOnly]);
 
   // Once a specific category is selected (not "All"), group the grid
   // into labeled sections by whichever dimension is currently chosen
@@ -229,7 +206,7 @@ export default function ClosetPage() {
   // subcategory vocabularies across categories (a bag next to a
   // sweater) wouldn't read as a coherent grouping.
   const groupedSections = useMemo(() => {
-    if (browseMode !== "category" || filter === "all") return null;
+    if (filter === "all") return null;
     const groups = new Map<string, ClosetItem[]>();
     for (const item of filteredItems) {
       const raw =
@@ -254,7 +231,7 @@ export default function ClosetPage() {
         label: key === "other" ? "Other" : key.replace(/\b\w/g, (c) => c.toUpperCase()),
         items: groupItems,
       }));
-  }, [filteredItems, filter, groupBy, browseMode]);
+  }, [filteredItems, filter, groupBy]);
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files || []);
@@ -828,32 +805,7 @@ export default function ClosetPage() {
           />
         </div>
 
-        <div className="flex gap-1 mb-2 -mx-4 px-4">
-          <button
-            onClick={() => setBrowseMode("category")}
-            className={`flex-1 py-1.5 rounded-full text-xs font-medium ${
-              browseMode === "category"
-                ? "bg-stone-700 text-cream"
-                : "bg-cream-100 text-stone-500"
-            }`}
-          >
-            By Category
-          </button>
-          <button
-            onClick={() => setBrowseMode("collection")}
-            className={`flex-1 py-1.5 rounded-full text-xs font-medium ${
-              browseMode === "collection"
-                ? "bg-stone-700 text-cream"
-                : "bg-cream-100 text-stone-500"
-            }`}
-          >
-            By Collection
-          </button>
-        </div>
-
         <div className="flex gap-2 overflow-x-auto pb-1 mb-2 -mx-4 px-4">
-          {browseMode === "category" ? (
-            <>
               <button
                 onClick={() => selectFilter("all")}
                 className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-medium ${
@@ -877,50 +829,9 @@ export default function ClosetPage() {
                   {c.emoji} {c.label}
                 </button>
               ))}
-            </>
-          ) : (
-            <>
-              <button
-                onClick={() => setCollectionFilter("all")}
-                className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-medium ${
-                  collectionFilter === "all"
-                    ? "bg-emerald-600 text-cream"
-                    : "bg-cream-100 text-stone-500"
-                }`}
-              >
-                All
-              </button>
-              {SMART_COLLECTIONS.map((c) => (
-                <button
-                  key={c}
-                  onClick={() => setCollectionFilter(c)}
-                  className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-medium ${
-                    collectionFilter === c
-                      ? "bg-emerald-600 text-cream"
-                      : "bg-emerald-50 text-emerald-700"
-                  }`}
-                >
-                  {c === "Favorites" ? "\u2b50 Favorites" : "\ud83d\udd25 Most Worn"}
-                </button>
-              ))}
-              {COLLECTION_OPTIONS.map((c) => (
-                <button
-                  key={c}
-                  onClick={() => setCollectionFilter(c)}
-                  className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-medium ${
-                    collectionFilter === c
-                      ? "bg-emerald-600 text-cream"
-                      : "bg-cream-100 text-stone-500"
-                  }`}
-                >
-                  {c}
-                </button>
-              ))}
-            </>
-          )}
         </div>
 
-        {browseMode === "category" && filter !== "all" && GROUPING_OPTIONS[filter] ? (
+        {filter !== "all" && GROUPING_OPTIONS[filter] ? (
           <div className="flex items-center gap-2 overflow-x-auto pb-1 mb-4 -mx-4 px-4">
             <span className="shrink-0 text-[11px] text-stone-400">Group by</span>
             {GROUPING_OPTIONS[filter].map((opt) => (

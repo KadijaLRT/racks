@@ -48,6 +48,17 @@ export default function AiQuotaBadge({ className = "" }: { className?: string })
             Average per retag: ~{q.avgTokensPerRetag.toLocaleString()} tokens
             {q.measured ? "" : " (a guess until your first retag)"}.
           </p>
+          {q.last ? (
+            <p>
+              Last AI action: {q.last.tokens.toLocaleString()} tokens
+              {q.last.prompt > 0
+                ? ` (${q.last.prompt.toLocaleString()} in, ${q.last.completion.toLocaleString()} out${
+                    q.last.reasoning > 0 ? `, ${q.last.reasoning.toLocaleString()} of that thinking` : ""
+                  })`
+                : ""}
+              {q.last.attempts > 1 ? `, took ${q.last.attempts} tries` : ""}.
+            </p>
+          ) : null}
           {q.requestsLeft != null ? (
             <p>Groq says {q.requestsLeft.toLocaleString()} requests remain today.</p>
           ) : null}

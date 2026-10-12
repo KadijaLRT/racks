@@ -187,6 +187,22 @@ function formatRateLimitMessage(retryAfterSec: number): string {
   }, this is a per-day cap on the free tier, not something that clears by spacing requests out. Check console.groq.com/settings/limits or consider a paid tier if this happens often.`;
 }
 
+// Billable attempts for the current groqChat: every request Groq actually
+// ran (200s and 400 generation failures), but not 429/403/404 rejections,
+// which never reach the model. Used to report what a retag really cost,
+// since a failed attempt resends the whole image (2,048 tokens each).
+let billableAttempts = 0;
+
+async function callCounted(
+  messages: ChatMessage[],
+  opts: GroqCallOptions,
+  apiKey: string
+): Promise<Response> {
+  const res = await callGroq(messages, opts, apiKey);
+  if (res.ok || res.status === 400) billableAttempts += 1;
+  return res;
+}
+
 async function callGroq(
   messages: ChatMessage[],
   opts: GroqCallOptions,
@@ -334,6 +350,7 @@ export async function groqChat(
   }
   activeLabel = opts.label || "an AI request";
   activeLabelSetAt = Date.now();
+  billableAttempts = 0;
 
   // Resolve which model this call actually uses. `kind`-based calls get
   // the live-checked best candidate plus a full fallback chain if it
@@ -401,7 +418,7 @@ async function groqChatOnce(
     };
 
     await waitForTurn();
-    let res = await callGroq(messages, opts, apiKey);
+    let res = await callCounted(messages, opts, apiKey);
 
     // Groq's free tier caps requests per minute; a burst of uploads (bulk
     // import, or several quick single-item adds) can exceed that within a
@@ -436,7 +453,7 @@ async function groqChatOnce(
       await new Promise((resolve) => setTimeout(resolve, waitMs));
       rateLimitAttempt += 1;
       await waitForTurn();
-      res = await callGroq(messages, opts, apiKey);
+      res = await callCounted(messages, opts, apiKey);
     }
 
     if (res.status === 429) {
@@ -467,9 +484,36 @@ async function groqChatOnce(
       if (!isJsonValidationFailure(text)) {
         throw new Error(`Groq API error (${res.status}): ${text}`);
       }
+      // A cut-off answer is the usual cause of this failure. Groq hands the
+      // partial text back, and everything before the cut is almost always
+      // valid, so recover it locally instead of paying for a second call
+      // that would resend the image (2,048 tokens) and often cut off again.
+      // Only for vision tagging calls, where missing trailing fields are
+      // filled in by the local attribute inference afterward.
+      if (opts.kind === "vision") {
+        const salvaged = salvageFailedGeneration(text);
+        if (salvaged) {
+          lastUsage = {
+            model: opts.model || "",
+            // Groq gave no usage for the failed call; approximate it as the
+            // flat image cost plus a typical prompt and a cut-off answer.
+            tokens: billableAttempts * 3000,
+            promptTokens: 0,
+            completionTokens: 0,
+            reasoningTokens: 0,
+            attempts: billableAttempts,
+            limitRequests: null,
+            remainingRequests: null,
+            limitTokensPerMinute: null,
+            remainingTokensPerMinute: null,
+            estimated: true,
+          };
+          return salvaged;
+        }
+      }
       attempt += 1;
       await waitForTurn();
-      res = await callGroq(
+      res = await callCounted(
         messages,
         { ...opts, temperature: (opts.temperature ?? 0.4) + 0.15 * attempt },
         apiKey
@@ -494,7 +538,7 @@ async function groqChatOnce(
     }
 
     const data = await res.json();
-    lastUsage = readUsage(res, data, opts.model);
+    lastUsage = readUsage(res, data, opts.model, Math.max(1, billableAttempts));
     return data?.choices?.[0]?.message?.content || "";
   }
 }
@@ -509,8 +553,21 @@ async function groqChatOnce(
  */
 export interface GroqUsageSnapshot {
   model: string;
-  /** Tokens this single call used (prompt + completion). */
+  /**
+   * Tokens this AI action cost in total: the successful call times the
+   * number of attempts (a failed attempt resends the image), so retries
+   * are counted instead of hidden.
+   */
   tokens: number;
+  /** Breakdown of the successful call. */
+  promptTokens: number;
+  completionTokens: number;
+  /** Part of completionTokens spent "thinking" before answering. */
+  reasoningTokens: number;
+  /** How many requests Groq ran for this one action (1 = no retries). */
+  attempts: number;
+  /** True when tokens could not be read and are approximated. */
+  estimated?: boolean;
   /** Requests-per-day limit and what remains (real values from Groq). */
   limitRequests: number | null;
   remainingRequests: number | null;
@@ -528,14 +585,30 @@ function headerNumber(res: Response, name: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-function readUsage(res: Response, data: unknown, model?: string): GroqUsageSnapshot {
-  const usage = (data as { usage?: { total_tokens?: number; prompt_tokens?: number; completion_tokens?: number } })?.usage;
-  const tokens =
-    Number(usage?.total_tokens) ||
-    (Number(usage?.prompt_tokens) || 0) + (Number(usage?.completion_tokens) || 0);
+function readUsage(
+  res: Response,
+  data: unknown,
+  model: string | undefined,
+  attempts: number
+): GroqUsageSnapshot {
+  const usage = (data as {
+    usage?: {
+      total_tokens?: number;
+      prompt_tokens?: number;
+      completion_tokens?: number;
+      completion_tokens_details?: { reasoning_tokens?: number };
+    };
+  })?.usage;
+  const prompt = Number(usage?.prompt_tokens) || 0;
+  const completion = Number(usage?.completion_tokens) || 0;
+  const single = Number(usage?.total_tokens) || prompt + completion;
   return {
     model: model || "",
-    tokens: Number.isFinite(tokens) ? tokens : 0,
+    tokens: Number.isFinite(single) ? single * attempts : 0,
+    promptTokens: prompt,
+    completionTokens: completion,
+    reasoningTokens: Number(usage?.completion_tokens_details?.reasoning_tokens) || 0,
+    attempts,
     limitRequests: headerNumber(res, "x-ratelimit-limit-requests"),
     remainingRequests: headerNumber(res, "x-ratelimit-remaining-requests"),
     limitTokensPerMinute: headerNumber(res, "x-ratelimit-limit-tokens"),
@@ -546,6 +619,67 @@ function readUsage(res: Response, data: unknown, model?: string): GroqUsageSnaps
 /** Usage for the most recent successful call, or null if none yet. */
 export function getLastGroqUsage(): GroqUsageSnapshot | null {
   return lastUsage;
+}
+
+/**
+ * Recovers a usable JSON object from Groq's json_validate_failed error
+ * body, which carries the cut-off text in error.failed_generation. Closes
+ * any open string/brackets and, if that still doesn't parse, trims back
+ * to the previous comma until it does. Returns the repaired JSON text, or
+ * null when nothing meaningful can be recovered.
+ */
+function salvageFailedGeneration(errorBody: string): string | null {
+  let raw = "";
+  try {
+    raw = String(JSON.parse(errorBody)?.error?.failed_generation || "");
+  } catch {
+    return null;
+  }
+  const start = raw.indexOf("{");
+  if (start < 0) return null;
+  let text = raw.slice(start);
+  // If the answer was cut off mid-way, its last key/value is incomplete
+  // ("sleeveLength":"Sleev"), so drop it rather than keep half a value.
+  if (!/[}\]]\s*$/.test(text)) {
+    const lastComma = text.lastIndexOf(",");
+    if (lastComma <= 0) return null;
+    text = text.slice(0, lastComma);
+  }
+
+  const close = (t: string): string => {
+    const stack: string[] = [];
+    let inString = false;
+    let escaped = false;
+    for (const ch of t) {
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (ch === "\\") escaped = true;
+        else if (ch === '"') inString = false;
+        continue;
+      }
+      if (ch === '"') inString = true;
+      else if (ch === "{") stack.push("}");
+      else if (ch === "[") stack.push("]");
+      else if (ch === "}" || ch === "]") stack.pop();
+    }
+    return t + (inString ? '"' : "") + stack.reverse().join("");
+  };
+
+  for (let i = 0; i < 60 && text.length > 1; i++) {
+    const candidate = close(text.replace(/[,:\s]+$/, ""));
+    try {
+      const parsed = JSON.parse(candidate);
+      if (parsed && typeof parsed === "object" && Object.keys(parsed).length > 0) {
+        return candidate;
+      }
+    } catch {
+      // Not valid yet; trim back to the previous comma and try again.
+    }
+    const cut = text.lastIndexOf(",");
+    if (cut <= 0) return null;
+    text = text.slice(0, cut);
+  }
+  return null;
 }
 
 /**

@@ -8,7 +8,7 @@ import ItemEditSheet from "@/components/ItemEditSheet";
 import RemixSheet from "@/components/RemixSheet";
 import BulkImportSheet from "@/components/BulkImportSheet";
 import { fileToResizedDataUrl, resizeDataUrlForAIByCategory } from "@/lib/image";
-import { recordGroqUsage, recordGroqError } from "@/lib/groqQuota";
+import { recordGroqUsage, recordGroqError, estimateQuota } from "@/lib/groqQuota";
 import AiQuotaBadge from "@/components/AiQuotaBadge";
 import { extractDominantColorTag, isLikelySolidColor } from "@/lib/dominantColor";
 import { computeHistoryTagSuggestions } from "@/lib/localTagHistory";
@@ -546,17 +546,54 @@ export default function ClosetPage() {
   // immediately rather than burning through the rest of the list on
   // calls that would just fail the same way, and reports how far it got.
   async function retagUntitledItems() {
-    const targets = scanResults.flagged;
-    if (targets.length === 0) return;
+    const flagged = scanResults.flagged;
+    if (flagged.length === 0) return;
 
     setRetagging(true);
     setRetagSummary(null);
+    setRetagProgress({ done: 0, total: flagged.length });
+
+    // Step 1, free: run the local pass over everything flagged first.
+    // Color, pattern, an inferable subcategory and every detail row can
+    // all be filled without the AI, and each AI call costs about 3,000
+    // tokens (a photo alone is a flat 2,048), so the AI should only see
+    // what is still unresolved afterwards.
+    const resolvedById = new Map<string, ClosetItem>();
+    for (let i = 0; i < flagged.length; i++) {
+      try {
+        const { updated } = await localRetagOne(flagged[i]);
+        if (updated) resolvedById.set(updated.id, updated);
+      } catch {
+        // A local failure on one item just leaves it for the AI step.
+      }
+      setRetagProgress({ done: i + 1, total: flagged.length });
+    }
+    if (resolvedById.size > 0) {
+      setItems((prev) => (prev || []).map((it) => resolvedById.get(it.id) || it));
+    }
+
+    // Step 2: only items that genuinely need the AI (no usable name, no
+    // subcategory even after local inference, or no color the pixels
+    // could give), capped to what today's allowance can cover.
+    const stillNeedAI = flagged
+      .map((it) => resolvedById.get(it.id) || it)
+      .filter(
+        (it) =>
+          it.name === "Untitled item" ||
+          !it.subcategory?.trim() ||
+          (it.category !== "makeup" && !it.tags?.color)
+      );
+    const quota = estimateQuota();
+    const allowed = quota.limitReached ? 0 : quota.retagsLeft;
+    const targets = stillNeedAI.slice(0, allowed);
+    const skippedForBudget = stillNeedAI.length - targets.length;
     setRetagProgress({ done: 0, total: targets.length });
 
-    let retagged = 0;
+    let retagged = resolvedById.size;
     let stillFailed = 0;
     let stoppedEarly = false;
     let stopReason = "";
+    let failStreak = 0;
 
     for (let i = 0; i < targets.length; i++) {
       const target = targets[i];
@@ -572,6 +609,7 @@ export default function ClosetPage() {
 
         if (tagged?.error) {
           stillFailed += 1;
+          failStreak += 1;
           const reason = String(tagged.error);
           recordGroqError(reason);
           // A rate-limit message means every remaining call would fail
@@ -613,15 +651,27 @@ export default function ClosetPage() {
           setItems((prev) =>
             (prev || []).map((it) => (it.id === updated.id ? updated : it))
           );
-          retagged += 1;
+          if (!resolvedById.has(updated.id)) retagged += 1;
+          failStreak = 0;
         } else {
           stillFailed += 1;
+          failStreak += 1;
         }
       } catch {
         stillFailed += 1;
+        failStreak += 1;
       }
 
       setRetagProgress({ done: i + 1, total: targets.length });
+
+      // Every failed attempt still spends tokens, so three misses in a
+      // row means something is wrong (limit, bad photo batch); stop.
+      if (failStreak >= 3) {
+        stoppedEarly = true;
+        stopReason =
+          "Three tags in a row failed, so I stopped to save your AI allowance for today.";
+        break;
+      }
 
       // Small gap between requests so this batch itself doesn't trip
       // the per-minute limit on a closet with many untitled items.
@@ -631,29 +681,27 @@ export default function ClosetPage() {
     }
 
     setRetagging(false);
-    setRetagSummary({ retagged, stillFailed, stoppedEarly, reason: stopReason });
+    const budgetNote =
+      skippedForBudget > 0 && !stoppedEarly
+        ? `${skippedForBudget} item${skippedForBudget === 1 ? " was" : "s were"} left for later to stay within today's AI allowance; run it again tomorrow or use Retag without AI.`
+        : "";
+    setRetagSummary({
+      retagged,
+      stillFailed,
+      stoppedEarly,
+      reason: stopReason || budgetNote,
+    });
   }
 
-  // Entirely local, zero AI, zero network call: re-samples each
-  // flagged item's actual pixels for color, and applies your own
-  // tagging history for its subcategory where a real majority pattern
-  // exists. Can't fix a missing subcategory or name the way AI can
-  // (there's no way to guess those from pixels alone), so those items
-  // still show up in the next scan needing a manual pass or an actual
-  // AI retag, but this closes real gaps instantly and for free.
-  async function retagWithoutAI() {
-    const targets = scanResults.localTargets;
-    if (targets.length === 0) return;
-    setRetagging(true);
-    setRetagSummary(null);
-    setRetagProgress({ done: 0, total: targets.length });
-
-    let updatedCount = 0;
-    let subcategoryOnlyCount = 0;
-    const updates: ClosetItem[] = [];
-    for (let i = 0; i < targets.length; i++) {
-      const target = targets[i];
-      const newTags = { ...(target.tags || {}) };
+  // Free, local pass for ONE item (no AI, no network): re-samples pixels
+  // for color/pattern, infers a subcategory from the name and tags, then
+  // fills every detail row from history and typical values. Returns the
+  // updated item (already saved) or null if nothing changed.
+  async function localRetagOne(
+    target: ClosetItem
+  ): Promise<{ updated: ClosetItem | null; subcategoryOnly: boolean }> {
+    let subcategoryOnly = false;
+    const newTags = { ...(target.tags || {}) };
       let changed = false;
 
       // An existing "Multicolor" is re-checked too: earlier versions
@@ -703,12 +751,38 @@ export default function ClosetPage() {
       } else if (!target.tags?.color && !target.tags?.pattern) {
         // The only gap on this item is exactly the one thing pixel
         // analysis can't determine: what kind of garment it is.
-        subcategoryOnlyCount += 1;
+        subcategoryOnly = true;
       }
 
-      if (changed) {
-        const updated = { ...workingTarget, tags: newTags };
-        await closetStore.update(updated);
+    if (changed) {
+      const updated = { ...workingTarget, tags: newTags };
+      await closetStore.update(updated);
+      return { updated, subcategoryOnly };
+    }
+    return { updated: null, subcategoryOnly };
+  }
+
+  // Entirely local, zero AI, zero network call: re-samples each
+  // flagged item's actual pixels for color, and applies your own
+  // tagging history for its subcategory where a real majority pattern
+  // exists. Can't fix a missing subcategory or name the way AI can
+  // (there's no way to guess those from pixels alone), so those items
+  // still show up in the next scan needing a manual pass or an actual
+  // AI retag, but this closes real gaps instantly and for free.
+  async function retagWithoutAI() {
+    const targets = scanResults.localTargets;
+    if (targets.length === 0) return;
+    setRetagging(true);
+    setRetagSummary(null);
+    setRetagProgress({ done: 0, total: targets.length });
+
+    let updatedCount = 0;
+    let subcategoryOnlyCount = 0;
+    const updates: ClosetItem[] = [];
+    for (let i = 0; i < targets.length; i++) {
+      const { updated, subcategoryOnly } = await localRetagOne(targets[i]);
+      if (subcategoryOnly) subcategoryOnlyCount += 1;
+      if (updated) {
         updates.push(updated);
         updatedCount += 1;
       }
@@ -929,6 +1003,11 @@ export default function ClosetPage() {
                       >
                         Retag now
                       </button>
+                    ) : null}
+                    {scanResults.flagged.length > 0 ? (
+                      <span className="text-[10px] text-stone-400 whitespace-nowrap">
+                        Local first; AI only if needed
+                      </span>
                     ) : null}
                     <button
                       onClick={retagWithoutAI}

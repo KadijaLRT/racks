@@ -42,14 +42,22 @@ export async function POST(req: NextRequest) {
     const fields =
       CATEGORY_FIELDS[safeCategory] || "type, color, material, formality, season";
 
+    // The long brand-spotting guidance only matters for bags and other
+    // accessories, where logos and hardware plates are the main cue; every
+    // other category gets a one-line rule, so those prompts stay short.
+    const brandRule =
+      safeCategory === "accessory"
+        ? 'Include "brand" only when you can point to a visible cue: a readable logo or label, a hardware plate or engraving, or an unmistakable signature print or monogram (for example interlocking GG, LV monogram canvas, Coach signature C, MK logo print, Chanel quilting with a CC clasp, YSL cassandre, Dior Oblique, Fendi FF, Burberry check, Prada triangle plate). Never infer a brand from silhouette, color or style alone; if unsure, leave brand out.'
+        : 'Include "brand" only if a logo or label is clearly readable; otherwise leave it out.';
+
     const content = await groqChat(
       [
         buildTextMessage(
           "system",
-          `You are a fashion cataloguing assistant. Look at the photo of a single wardrobe item and return ONLY a JSON object, no other text. Shape: { "name": string (a short, natural descriptive name like a stylist would write it, e.g. "White oversized linen button-up"), "subcategory": string (one specific noun for the item's type, e.g. "blouse", "sneakers", "midi skirt"), "tags": { key/value attributes as strings, include "brand" only if branding is visible: a readable logo or label, a hardware plate or engraving, or an unmistakable signature print or monogram (for example interlocking GG, LV monogram canvas, Coach signature C, MK logo print, Chanel quilting with an interlocking CC clasp, YSL cassandre, Dior Oblique, Fendi FF, Burberry check, Prada triangle plate) } }. Base everything on exactly what's visible; never infer a brand from silhouette, color or general style alone. If you can point to a specific visible cue, report the brand; if you are unsure, leave brand out rather than guess.`
+          `You are a fashion cataloguing assistant. Look at the photo of a single wardrobe item and return ONLY a JSON object, no other text. Shape: { "name": string (short, natural stylist-style name, e.g. "White oversized linen button-up"), "subcategory": string (one specific noun for the item's type, e.g. "blouse", "sneakers", "midi skirt"), "tags": { key/value attributes as strings } }. Base everything on exactly what is visible. ${brandRule}`
         ),
         buildImageMessage(
-          `This is a ${safeCategory}. Detect these attributes (use these exact key names, camelCase, and fill in every one that applies, giving your best judgment): ${fields}. Return the JSON object only.`,
+          `This is a ${safeCategory}. Fill in every one of these that applies, using these exact camelCase key names and your best judgment: ${fields}. JSON only.`,
           image
         ),
       ],

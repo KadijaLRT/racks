@@ -34,6 +34,8 @@ interface StoredQuota {
   remainingRequests: number | null;
   /** Set when Groq itself said the daily cap was hit. */
   limitHitAt: number | null;
+  /** Breakdown of the most recent AI action, for the details panel. */
+  last: { tokens: number; prompt: number; completion: number; reasoning: number; attempts: number } | null;
 }
 
 export interface QuotaEstimate {
@@ -44,6 +46,8 @@ export interface QuotaEstimate {
   avgTokensPerRetag: number;
   /** True once at least one real call has been measured. */
   measured: boolean;
+  /** The most recent AI action's token breakdown, if any. */
+  last: StoredQuota["last"];
   /** Real remaining-requests number from Groq, when known. */
   requestsLeft: number | null;
   /** Best estimate of AI retags left; 0 when Groq reported the cap hit. */
@@ -64,6 +68,7 @@ function blank(): StoredQuota {
     limitRequests: null,
     remainingRequests: null,
     limitHitAt: null,
+    last: null,
   };
 }
 
@@ -81,6 +86,7 @@ function read(): StoredQuota {
       limitRequests: parsed?.limitRequests ?? null,
       remainingRequests: parsed?.remainingRequests ?? null,
       limitHitAt: parsed?.limitHitAt ?? null,
+      last: parsed?.last ?? null,
     };
     // New UTC day: the daily tally and any "limit hit" flag reset, but the
     // measured per-retag average carries over.
@@ -111,6 +117,13 @@ export function recordGroqUsage(usage: GroqUsageSnapshot | null | undefined) {
   q.tokensToday += tokens;
   q.callsToday += 1;
   q.recent = [...q.recent, tokens].slice(-RECENT_WINDOW);
+  q.last = {
+    tokens,
+    prompt: Number(usage.promptTokens) || 0,
+    completion: Number(usage.completionTokens) || 0,
+    reasoning: Number(usage.reasoningTokens) || 0,
+    attempts: Number(usage.attempts) || 1,
+  };
   if (usage.limitRequests != null) q.limitRequests = usage.limitRequests;
   if (usage.remainingRequests != null) q.remainingRequests = usage.remainingRequests;
   write(q);
@@ -147,6 +160,7 @@ export function estimateQuota(dailyTokenLimit = DEFAULT_DAILY_TOKEN_LIMIT): Quot
     tokensLeft,
     avgTokensPerRetag: avg,
     measured,
+    last: q.last,
     requestsLeft: byRequests,
     retagsLeft,
     limitReached,

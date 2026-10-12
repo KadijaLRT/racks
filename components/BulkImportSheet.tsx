@@ -1,5 +1,6 @@
 "use client";
 
+import { recordGroqUsage } from "@/lib/groqQuota";
 import { useEffect, useState } from "react";
 import { AlertCircle, Check, Loader2, X } from "lucide-react";
 import { cropDataUrlByBox } from "@/lib/image";
@@ -40,6 +41,7 @@ export default function BulkImportSheet({
           body: JSON.stringify({ image: screenshotDataUrl }),
         });
         const data = await res.json().catch(() => ({}));
+        recordGroqUsage(data?.usage);
         if (data?.error) throw new Error(data.error);
 
         const rawItems = data?.items || [];

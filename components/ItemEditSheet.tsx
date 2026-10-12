@@ -1,5 +1,7 @@
 "use client";
 
+import { recordGroqUsage, recordGroqError } from "@/lib/groqQuota";
+import AiQuotaBadge from "@/components/AiQuotaBadge";
 import { useRef, useState } from "react";
 import { X, Pin, PinOff, Trash2, Plus, Shuffle, Camera, Loader2, Sparkles, ChevronDown, Search } from "lucide-react";
 import type { ClosetItem, ItemCategory } from "@/lib/types";
@@ -181,6 +183,7 @@ export default function ItemEditSheet({
           body: JSON.stringify({ image: aiImage, category }),
         });
         const result = await res.json().catch(() => ({}));
+        recordGroqUsage(result?.usage);
         if (!result?.error) {
           if (result?.name) {
             setName(result.name);
@@ -223,7 +226,9 @@ export default function ItemEditSheet({
         body: JSON.stringify({ image: aiImage, category }),
       });
       const result = await res.json().catch(() => ({}));
+      recordGroqUsage(result?.usage);
       if (result?.error) {
+        recordGroqError(result.error);
         setRetagItemError(
           typeof result.error === "string" ? result.error : "Retagging failed."
         );
@@ -366,6 +371,7 @@ export default function ItemEditSheet({
           body: JSON.stringify({ image: aiImage, category }),
         });
         const result = await res.json().catch(() => ({}));
+        recordGroqUsage(result?.usage);
         if (!result?.error && result?.tags && typeof result.tags === "object") {
           setTags((prev) => ({ ...(prev || {}), ...normalizeTags(result.tags) }));
         }
@@ -937,6 +943,7 @@ export default function ItemEditSheet({
                   )}
                   {retaggingItem ? "Retagging..." : "Retag with AI"}
                 </button>
+                <AiQuotaBadge className="mt-1.5" />
                 <button
                   type="button"
                   onClick={handleRetagWithoutAI}

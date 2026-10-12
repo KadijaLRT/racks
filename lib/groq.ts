@@ -494,8 +494,58 @@ async function groqChatOnce(
     }
 
     const data = await res.json();
+    lastUsage = readUsage(res, data, opts.model);
     return data?.choices?.[0]?.message?.content || "";
   }
+}
+
+/**
+ * What the last successful Groq call cost and what Groq says is left.
+ * Groq reports requests-per-day and tokens-per-minute in response
+ * headers, and tokens used per call in the body. It does NOT report the
+ * daily token balance, so the client keeps its own running total (see
+ * lib/groqQuota.ts). Calls are serialized by the lock in groqChat, so
+ * reading this right after groqChat returns is safe within a request.
+ */
+export interface GroqUsageSnapshot {
+  model: string;
+  /** Tokens this single call used (prompt + completion). */
+  tokens: number;
+  /** Requests-per-day limit and what remains (real values from Groq). */
+  limitRequests: number | null;
+  remainingRequests: number | null;
+  /** Tokens-per-minute limit and what remains in the current minute. */
+  limitTokensPerMinute: number | null;
+  remainingTokensPerMinute: number | null;
+}
+
+let lastUsage: GroqUsageSnapshot | null = null;
+
+function headerNumber(res: Response, name: string): number | null {
+  const raw = res.headers.get(name);
+  if (raw === null) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
+function readUsage(res: Response, data: unknown, model?: string): GroqUsageSnapshot {
+  const usage = (data as { usage?: { total_tokens?: number; prompt_tokens?: number; completion_tokens?: number } })?.usage;
+  const tokens =
+    Number(usage?.total_tokens) ||
+    (Number(usage?.prompt_tokens) || 0) + (Number(usage?.completion_tokens) || 0);
+  return {
+    model: model || "",
+    tokens: Number.isFinite(tokens) ? tokens : 0,
+    limitRequests: headerNumber(res, "x-ratelimit-limit-requests"),
+    remainingRequests: headerNumber(res, "x-ratelimit-remaining-requests"),
+    limitTokensPerMinute: headerNumber(res, "x-ratelimit-limit-tokens"),
+    remainingTokensPerMinute: headerNumber(res, "x-ratelimit-remaining-tokens"),
+  };
+}
+
+/** Usage for the most recent successful call, or null if none yet. */
+export function getLastGroqUsage(): GroqUsageSnapshot | null {
+  return lastUsage;
 }
 
 /**

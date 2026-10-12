@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { groqChat, parseGroqJson, buildImageMessage, buildTextMessage } from "@/lib/groq";
+import { groqChat, parseGroqJson, buildImageMessage, buildTextMessage, getLastGroqUsage } from "@/lib/groq";
 import { isSafeImageDataUrl } from "@/lib/groqSanitizer";
 import type { ItemCategory } from "@/lib/types";
 
@@ -99,7 +99,7 @@ export async function POST(req: NextRequest) {
       }))
       .slice(0, 20); // sane upper bound on one screenshot's worth of items
 
-    return NextResponse.json({ items });
+    return NextResponse.json({ items, usage: getLastGroqUsage() });
   } catch (err) {
     console.error("tag-multi-item failed:", err instanceof Error ? err.message : err);
     return NextResponse.json(

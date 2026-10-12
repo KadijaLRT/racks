@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { normalizeTags } from "@/lib/tagNormalizer";
-import { groqChat, parseGroqJson, buildImageMessage, buildTextMessage } from "@/lib/groq";
+import { groqChat, parseGroqJson, buildImageMessage, buildTextMessage, getLastGroqUsage } from "@/lib/groq";
 import { isSafeImageDataUrl } from "@/lib/groqSanitizer";
 import type { ItemCategory } from "@/lib/types";
 
@@ -64,6 +64,7 @@ export async function POST(req: NextRequest) {
       category,
       subcategory: parsed.subcategory || "",
       tags: normalizeTags(parsed.tags),
+      usage: getLastGroqUsage(),
     });
   } catch (err) {
     console.error("tag-wishlist-item failed:", err instanceof Error ? err.message : err);

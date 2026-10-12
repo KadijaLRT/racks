@@ -1,5 +1,6 @@
 "use client";
 
+import { recordGroqUsage } from "@/lib/groqQuota";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Plus, Loader2, Link2, Camera, Trash2, ShoppingBag, X } from "lucide-react";
@@ -94,6 +95,7 @@ export default function WishlistPage() {
         body: JSON.stringify({ image: aiImage }),
       });
       const tagged = await res.json().catch(() => ({}));
+      recordGroqUsage(tagged?.usage);
       if (!tagged?.error) {
         name = tagged?.name || name;
         category = tagged?.category || category;

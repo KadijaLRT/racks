@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { normalizeTags } from "@/lib/tagNormalizer";
-import { groqChat, parseGroqJson, buildImageMessage, buildTextMessage } from "@/lib/groq";
+import { groqChat, parseGroqJson, buildImageMessage, buildTextMessage, getLastGroqUsage } from "@/lib/groq";
 import { isSafeImageDataUrl, sanitizeGroqText } from "@/lib/groqSanitizer";
 import type { ItemCategory } from "@/lib/types";
 
@@ -66,6 +66,7 @@ export async function POST(req: NextRequest) {
       name: parsed.name || "Untitled item",
       subcategory: parsed.subcategory || "",
       tags: normalizeTags(parsed.tags),
+      usage: getLastGroqUsage(),
     });
   } catch (err) {
     console.error("tag-item failed:", err instanceof Error ? err.message : err);

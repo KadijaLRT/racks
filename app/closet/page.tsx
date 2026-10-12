@@ -8,6 +8,8 @@ import ItemEditSheet from "@/components/ItemEditSheet";
 import RemixSheet from "@/components/RemixSheet";
 import BulkImportSheet from "@/components/BulkImportSheet";
 import { fileToResizedDataUrl, resizeDataUrlForAIByCategory } from "@/lib/image";
+import { recordGroqUsage, recordGroqError } from "@/lib/groqQuota";
+import AiQuotaBadge from "@/components/AiQuotaBadge";
 import { extractDominantColorTag, isLikelySolidColor } from "@/lib/dominantColor";
 import { computeHistoryTagSuggestions } from "@/lib/localTagHistory";
 import { inferSubcategoryFromText } from "@/lib/localSubcategory";
@@ -566,10 +568,12 @@ export default function ClosetPage() {
           body: JSON.stringify({ image: aiImage, category: target.category }),
         });
         const tagged = await res.json().catch(() => ({}));
+        recordGroqUsage(tagged?.usage);
 
         if (tagged?.error) {
           stillFailed += 1;
           const reason = String(tagged.error);
+          recordGroqError(reason);
           // A rate-limit message means every remaining call would fail
           // the same way right now; stop instead of wasting the rest
           // of the batch (and the daily quota) on guaranteed failures.
@@ -862,6 +866,7 @@ export default function ClosetPage() {
 
           return (
             <div className="mb-3 rounded-xl border border-clay-100 bg-white px-3 py-2.5">
+              <AiQuotaBadge className="mb-2" />
               {retagging ? (
                 <div className="flex items-center gap-2 text-xs text-stone-600">
                   <Loader2 size={14} className="animate-spin shrink-0" />
